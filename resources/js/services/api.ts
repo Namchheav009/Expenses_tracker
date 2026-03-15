@@ -1,0 +1,71 @@
+import axios from 'axios'
+
+const API_BASE_URL = 'http://127.0.0.1:8000/api'
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
+  withCredentials: false,
+})
+
+// Add auth token to requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Handle errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+// Categories API
+export const categoriesApi = {
+  index: () => api.get('/categories'),
+  store: (data: any) => api.post('/categories', data),
+  show: (id: number | string) => api.get(`/categories/${id}`),
+  update: (id: number | string, data: any) => api.put(`/categories/${id}`, data),
+  destroy: (id: number | string) => api.delete(`/categories/${id}`),
+}
+
+// Wallets API
+export const walletsApi = {
+  index: () => api.get('/wallets'),
+  store: (data: any) => api.post('/wallets', data),
+  show: (id: number | string) => api.get(`/wallets/${id}`),
+  update: (id: number | string, data: any) => api.put(`/wallets/${id}`, data),
+  destroy: (id: number | string) => api.delete(`/wallets/${id}`),
+}
+
+// Transactions API
+export const transactionsApi = {
+  index: () => api.get('/transactions'),
+  store: (data: any) => api.post('/transactions', data),
+  show: (id: number | string) => api.get(`/transactions/${id}`),
+  update: (id: number | string, data: any) => api.put(`/transactions/${id}`, data),
+  destroy: (id: number | string) => api.delete(`/transactions/${id}`),
+}
+
+// Budgets API
+export const budgetsApi = {
+  index: () => api.get('/budgets'),
+  store: (data: any) => api.post('/budgets', data),
+  show: (id: number | string) => api.get(`/budgets/${id}`),
+  update: (id: number | string, data: any) => api.put(`/budgets/${id}`, data),
+  destroy: (id: number | string) => api.delete(`/budgets/${id}`),
+}
+
+export default api
