@@ -2,17 +2,22 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { PlusIcon, Edit2Icon, Trash2Icon } from 'lucide-react'
 import type { Category } from '../data/mockData'
+import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
 interface CategoriesProps {
   categories: Category[]
   onAddCategory: (category: Omit<Category, 'id'>) => void
+  onUpdateCategory: (id: string, category: Omit<Category, 'id'>) => void
+  onDeleteCategory: (id: string) => void
 }
-export function Categories({ categories, onAddCategory }: CategoriesProps) {
+export function Categories({ categories, onAddCategory, onUpdateCategory, onDeleteCategory }: CategoriesProps) {
   const incomes = categories.filter((c) => c.type === 'income')
   const expenses = categories.filter((c) => c.type === 'expense')
   const [addingType, setAddingType] = useState<'income' | 'expense' | null>(
     null,
   )
   const [newName, setNewName] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
   const handleAdd = (type: 'income' | 'expense') => {
     if (!newName.trim()) {
       setAddingType(null)
@@ -23,8 +28,17 @@ export function Categories({ categories, onAddCategory }: CategoriesProps) {
       name: newName,
       type,
     })
+    showSavedToast('Category added')
     setNewName('')
     setAddingType(null)
+  }
+
+  const handleDeleteCategory = async (id: string) => {
+    const confirmed = await confirmDelete('category')
+    if (!confirmed) return
+
+    onDeleteCategory(id)
+    showDeletedToast('Deleted!', 'Your category has been deleted.')
   }
   const renderCategoryList = (
     title: string,
@@ -61,13 +75,59 @@ export function Categories({ categories, onAddCategory }: CategoriesProps) {
             key={cat.id}
             className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group"
           >
-            <span className="font-medium text-slate-700">{cat.name}</span>
+            {editingId === cat.id ? (
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  autoFocus
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onUpdateCategory(cat.id, { userId: 'user_123', name: editingName, type: cat.type })
+                      showSavedToast('Category updated')
+                      setEditingId(null)
+                      setEditingName('')
+                    } else if (e.key === 'Escape') {
+                      setEditingId(null)
+                      setEditingName('')
+                    }
+                  }}
+                  className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-500"
+                />
+                <button
+                  onClick={() => {
+                    onUpdateCategory(cat.id, { userId: 'user_123', name: editingName, type: cat.type })
+                    showSavedToast('Category updated')
+                    setEditingId(null)
+                    setEditingName('')
+                  }}
+                  className="px-2 py-1 text-xs bg-slate-900 text-white rounded hover:bg-slate-800"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingId(null)
+                    setEditingName('')
+                  }}
+                  className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <span className="font-medium text-slate-700">{cat.name}</span>
+            )}
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button className="p-1.5 text-slate-400 hover:text-blue-600 rounded-md transition-colors">
-                <Edit2Icon className="w-4 h-4" />
+                <Edit2Icon className="w-4 h-4" onClick={() => {
+                  setEditingId(cat.id)
+                  setEditingName(cat.name)
+                }} />
               </button>
               <button className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md transition-colors">
-                <Trash2Icon className="w-4 h-4" />
+                <Trash2Icon className="w-4 h-4" onClick={() => handleDeleteCategory(cat.id)} />
               </button>
             </div>
           </motion.div>

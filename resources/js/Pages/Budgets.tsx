@@ -5,26 +5,34 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   TargetIcon,
+  Edit2Icon,
+  Trash2Icon,
 } from 'lucide-react'
 import type { Budget, Category, Transaction } from '../data/mockData'
 import { Modal } from '../Components/Modal'
+import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
 interface BudgetsProps {
   budgets: Budget[]
   categories: Category[]
   transactions: Transaction[]
   onAddBudget: (budget: Omit<Budget, 'id'>) => void
+  onUpdateBudget: (id: string, budget: Omit<Budget, 'id'>) => void
+  onDeleteBudget: (id: string) => void
 }
 export function Budgets({
   budgets,
   categories,
   transactions,
   onAddBudget,
+  onUpdateBudget,
+  onDeleteBudget,
 }: BudgetsProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1)
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [formCategory, setFormCategory] = useState('')
   const [formLimit, setFormLimit] = useState('')
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const monthNames = [
     'January',
     'February',
@@ -59,18 +67,38 @@ export function Budgets({
     (b) => b.month === currentMonth && b.year === currentYear,
   )
   const expenseCategories = categories.filter((c) => c.type === 'expense')
+  const resetForm = () => {
+    setEditingBudget(null)
+    setFormCategory('')
+    setFormLimit('')
+  }
+
+  const handleDeleteBudget = async (id: string) => {
+    const confirmed = await confirmDelete('budget')
+    if (!confirmed) return
+
+    onDeleteBudget(id)
+    showDeletedToast('Deleted!', 'Your budget has been deleted.')
+  }
+
   const handleAddSubmit = () => {
     if (!formCategory || !formLimit) return
-    onAddBudget({
+    const budgetData = {
       userId: 'user_123',
       categoryId: formCategory,
       limitAmount: parseFloat(formLimit),
       month: currentMonth,
       year: currentYear,
-    })
+    }
+    if (editingBudget) {
+      onUpdateBudget(editingBudget.id, budgetData)
+      showSavedToast('Budget updated')
+    } else {
+      onAddBudget(budgetData)
+      showSavedToast('Budget added')
+    }
     setIsModalOpen(false)
-    setFormCategory('')
-    setFormLimit('')
+    resetForm()
   }
   return (
     <motion.div
@@ -188,11 +216,25 @@ export function Budgets({
                       {category?.name}
                     </h3>
                   </div>
-                  <span
-                    className={`text-sm font-medium px-2.5 py-1 rounded-full bg-slate-50 ${textColorClass}`}
-                  >
-                    {percent.toFixed(0)}% Used
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        setEditingBudget(budget)
+                        setFormCategory(budget.categoryId)
+                        setFormLimit(budget.limitAmount.toString())
+                        setIsModalOpen(true)
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                    >
+                      <Edit2Icon className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteBudget(budget.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                    >
+                      <Trash2Icon className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -256,26 +298,34 @@ export function Budgets({
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Create Budget"
+        onClose={() => {
+          setIsModalOpen(false)
+          resetForm()
+        }}
+        title={editingBudget ? 'Edit Budget' : 'Create Budget'}
         footer={
           <div className="flex justify-end gap-3">
             <button
-              onClick={() => setIsModalOpen(false)}
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false)
+                resetForm()
+              }}
               className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleAddSubmit}
               className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors"
             >
-              Save Budget
+              {editingBudget ? 'Update' : 'Save'} Budget
             </button>
           </div>
         }
       >
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleAddSubmit(); }}>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Category
@@ -313,7 +363,7 @@ export function Budgets({
             </strong>
             .
           </div>
-        </div>
+        </form>
       </Modal>
     </motion.div>
   )

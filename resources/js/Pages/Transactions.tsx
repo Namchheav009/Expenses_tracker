@@ -8,11 +8,13 @@ import {
 } from 'lucide-react'
 import type { Transaction, Category, Wallet } from '../data/mockData'
 import { Modal } from '../Components/Modal'
+import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
 interface TransactionsProps {
   transactions: Transaction[]
   categories: Category[]
   wallets: Wallet[]
   onAddTransaction: (txn: Omit<Transaction, 'id' | 'createdAt'>) => void
+  onUpdateTransaction: (id: string, txn: Omit<Transaction, 'id' | 'createdAt'>) => void
   onDeleteTransaction: (id: string) => void
 }
 export function Transactions({
@@ -20,12 +22,14 @@ export function Transactions({
   categories,
   wallets,
   onAddTransaction,
+  onUpdateTransaction,
   onDeleteTransaction,
 }: TransactionsProps) {
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>(
     'all',
   )
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingTxn, setEditingTxn] = useState<Transaction | null>(null)
   // Form State
   const [formType, setFormType] = useState<'income' | 'expense'>('expense')
   const [formTitle, setFormTitle] = useState('')
@@ -39,10 +43,29 @@ export function Transactions({
   const filteredTransactions = transactions
     .filter((t) => filterType === 'all' || t.transactionType === filterType)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  const resetForm = () => {
+    setEditingTxn(null)
+    setFormType('expense')
+    setFormTitle('')
+    setFormAmount('')
+    setFormCategory('')
+    setFormWallet('')
+    setFormDate(new Date().toISOString().split('T')[0])
+    setFormNote('')
+  }
+
+  const handleDeleteTransaction = async (id: string) => {
+    const confirmed = await confirmDelete('transaction')
+    if (!confirmed) return
+
+    onDeleteTransaction(id)
+    showDeletedToast('Deleted!', 'Your transaction has been deleted.')
+  }
+
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formTitle || !formAmount || !formCategory || !formWallet) return
-    onAddTransaction({
+    const txnData = {
       userId: 'user_123',
       title: formTitle,
       amount: parseFloat(formAmount),
@@ -51,12 +74,16 @@ export function Transactions({
       walletId: formWallet,
       date: formDate,
       note: formNote,
-    })
+    }
+    if (editingTxn) {
+      onUpdateTransaction(editingTxn.id, txnData)
+      showSavedToast('Transaction updated')
+    } else {
+      onAddTransaction(txnData)
+      showSavedToast('Transaction added')
+    }
     setIsModalOpen(false)
-    // Reset form
-    setFormTitle('')
-    setFormAmount('')
-    setFormNote('')
+    resetForm()
   }
   return (
     <motion.div
@@ -76,7 +103,10 @@ export function Transactions({
           </p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            resetForm()
+            setIsModalOpen(true)
+          }}
           className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors shadow-sm"
         >
           <PlusIcon className="w-5 h-5" />
@@ -184,10 +214,20 @@ export function Transactions({
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
-                            <Edit2Icon className="w-4 h-4" />
+                            <Edit2Icon className="w-4 h-4" onClick={() => {
+                              setEditingTxn(txn)
+                              setFormType(txn.transactionType)
+                              setFormTitle(txn.title)
+                              setFormAmount(txn.amount.toString())
+                              setFormCategory(txn.categoryId)
+                              setFormWallet(txn.walletId)
+                              setFormDate(txn.date)
+                              setFormNote('')
+                              setIsModalOpen(true)
+                            }} />
                           </button>
                           <button
-                            onClick={() => onDeleteTransaction(txn.id)}
+                            onClick={() => handleDeleteTransaction(txn.id)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                           >
                             <Trash2Icon className="w-4 h-4" />
@@ -206,12 +246,18 @@ export function Transactions({
       {/* Add Modal */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Add Transaction"
+        onClose={() => {
+          setIsModalOpen(false)
+          resetForm()
+        }}
+        title={editingTxn ? 'Edit Transaction' : 'Add Transaction'}
         footer={
           <div className="flex justify-end gap-3">
             <button
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => {
+                setIsModalOpen(false)
+                resetForm()
+              }}
               className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
             >
               Cancel

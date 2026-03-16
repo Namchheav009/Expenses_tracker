@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Wallet;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class WalletController extends Controller
 {
@@ -32,13 +33,13 @@ class WalletController extends Controller
 
     public function show(Wallet $wallet): JsonResponse
     {
-        $this->authorize('view', $wallet);
+        Gate::authorize('view', $wallet);
         return response()->json($wallet);
     }
 
     public function update(Request $request, Wallet $wallet): JsonResponse
     {
-        $this->authorize('update', $wallet);
+        Gate::authorize('update', $wallet);
 
         $validated = $request->validate([
             'name' => 'string|max:255',
@@ -52,7 +53,7 @@ class WalletController extends Controller
 
     public function destroy(Wallet $wallet): JsonResponse
     {
-        $this->authorize('delete', $wallet);
+        Gate::authorize('delete', $wallet);
         $wallet->delete();
         return response()->json(null, 204);
     }

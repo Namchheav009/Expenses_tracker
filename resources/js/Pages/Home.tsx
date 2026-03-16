@@ -6,7 +6,7 @@ import { Wallets } from './Wallets'
 import { Categories } from './Categories'
 import { Budgets } from './Budgets'
 import { AIAnalysis } from './AIAnalysis'
-import Login from './Login'
+import AuthPage from './Auth/AuthPage'
 import {
   mockTransactions,
   mockWallets,
@@ -21,12 +21,14 @@ import type {
   Budget,
   AIAnalysis as AIAnalysisType,
 } from '@/data/mockData'
-import {
+import api, {
   categoriesApi,
   walletsApi,
   transactionsApi,
   budgetsApi,
+  aiAnalysesApi,
 } from '@/services/api'
+import { confirmLogout, showSavedToast } from '@/Components/confirmDelete'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -37,8 +39,58 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>(mockCategories)
   const [budgets, setBudgets] = useState<Budget[]>(mockBudgets)
   const [analyses, setAnalyses] = useState<AIAnalysisType[]>(mockAnalyses)
+  const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const normalizeTransaction = (t: any): Transaction => ({
+    ...t,
+    id: String(t.id),
+    userId: String(t.user_id ?? t.userId ?? ''),
+    walletId: String(t.wallet_id ?? t.walletId ?? ''),
+    categoryId: String(t.category_id ?? t.categoryId ?? ''),
+    amount: Number(t.amount),
+    transactionType: t.transaction_type || t.transactionType || 'expense',
+    date: t.transaction_date || t.date || '',
+    createdAt: t.created_at || t.createdAt || '',
+    title: t.description || t.title || '',
+    note: t.note || '',
+  })
+
+  const normalizeWallet = (w: any): Wallet => ({
+    ...w,
+    id: String(w.id),
+    userId: String(w.user_id ?? w.userId ?? ''),
+    balance: Number(w.balance),
+  })
+
+  const normalizeCategory = (c: any): Category => ({
+    ...c,
+    id: String(c.id),
+    userId: String(c.user_id ?? c.userId ?? ''),
+    type: c.type || 'expense',
+  })
+
+  const normalizeBudget = (b: any): Budget => ({
+    ...b,
+    id: String(b.id),
+    userId: String(b.user_id ?? b.userId ?? ''),
+    categoryId: String(b.category_id ?? b.categoryId ?? ''),
+    limitAmount: Number(b.amount ?? b.limitAmount),
+    month: Number(b.month),
+    year: Number(b.year),
+  })
+
+  const normalizeAnalysis = (a: any): AIAnalysisType => ({
+    ...a,
+    id: String(a.id),
+    userId: String(a.user_id ?? a.userId ?? ''),
+    month: Number(a.month),
+    year: Number(a.year),
+    summaryText: a.summary_text ?? a.summaryText ?? '',
+    aiResult: a.ai_result ?? a.aiResult ?? '',
+    createdAt: a.created_at ?? a.createdAt ?? '',
+  })
 
   // Check authentication and fetch data on component mount
   useEffect(() => {
@@ -54,13 +106,21 @@ export default function Home() {
       try {
         setLoading(true)
         setIsAuthenticated(true)
-        
-        const [catRes, walletRes, txnRes, budgetRes] = await Promise.all([
+
+        const [userRes, catRes, walletRes, txnRes, budgetRes, analysisRes] = await Promise.all([
+          api.get('/user'),
           categoriesApi.index(),
           walletsApi.index(),
           transactionsApi.index(),
           budgetsApi.index(),
+          aiAnalysesApi.index(),
         ])
+
+        setUser({
+          id: String(userRes.data.id),
+          name: userRes.data.name,
+          email: userRes.data.email,
+        })
 
         console.log('API Responses:', { catRes, walletRes, txnRes, budgetRes })
 
@@ -84,17 +144,9 @@ export default function Home() {
         )
         // Normalize transactions
         setTransactions(
-          (txnRes.data?.data || txnRes.data || mockTransactions).map((t: any) => ({
-            ...t,
-            id: String(t.id),
-            userId: String(t.user_id),
-            walletId: String(t.wallet_id),
-            categoryId: String(t.category_id),
-            amount: Number(t.amount),
-            transactionType: t.transaction_type || t.transactionType || 'expense',
-            date: t.transaction_date || t.date || '',
-            createdAt: t.created_at || t.createdAt || '',
-          }))
+          (txnRes.data?.data || txnRes.data || mockTransactions).map((t: any) =>
+            normalizeTransaction(t),
+          ),
         )
         // Normalize budgets
         setBudgets(
@@ -108,6 +160,11 @@ export default function Home() {
             year: Number(b.year),
           }))
         )
+
+        setAnalyses(
+          (analysisRes.data?.data || analysisRes.data || mockAnalyses).map((a: any) => normalizeAnalysis(a)),
+        )
+
         setError(null)
       } catch (err: any) {
         console.error('Error fetching data:', err.message, err.response?.data)
@@ -122,6 +179,7 @@ export default function Home() {
         if (err.response?.status === 401) {
           localStorage.removeItem('auth_token')
           setIsAuthenticated(false)
+          setUser(null)
           setError('Session expired. Please login again.')
         } else {
           setError(`Connection issue: ${err.message}. Using sample data for now.`)
@@ -134,16 +192,42 @@ export default function Home() {
     checkAuthAndFetchData()
   }, [])
 
+  const handleLogout = async () => {
+    const confirmed = await confirmLogout()
+    if (!confirmed) return
+
+    try {
+      await api.post('/logout')
+    } catch {
+      // ignore errors - proceed with clearing locally
+    }
+
+    localStorage.removeItem('auth_token')
+    showSavedToast('You have been logged out')
+    setTimeout(() => {
+      window.location.reload()
+    }, 800)
+  }
+
   const handleAddTransaction = async (txn: Omit<Transaction, 'id' | 'createdAt'>) => {
     try {
-      const response = await transactionsApi.store(txn)
-      const newTxn = response.data
+      // Transform to API expected format (snake_case)
+      const apiTxn = {
+        wallet_id: txn.walletId,
+        category_id: txn.categoryId,
+        amount: txn.amount,
+        transaction_type: txn.transactionType,
+        description: txn.title, // API expects 'description', frontend uses 'title'
+        transaction_date: txn.date, // API expects 'transaction_date', frontend uses 'date'
+      }
+      const response = await transactionsApi.store(apiTxn)
+      const newTxn = normalizeTransaction(response.data)
       setTransactions((prev) => [...prev, newTxn])
       
       // Update wallet balance
       setWallets((prev) =>
         prev.map((w) => {
-          if (w.id === txn.walletId) {
+          if (w.id.toString() === txn.walletId.toString()) {
             return {
               ...w,
               balance:
@@ -161,6 +245,70 @@ export default function Home() {
     }
   }
 
+  const handleUpdateTransaction = async (id: string, txn: Omit<Transaction, 'id' | 'createdAt'>) => {
+    try {
+      // Transform to API expected format (snake_case)
+      const apiTxn = {
+        wallet_id: txn.walletId,
+        category_id: txn.categoryId,
+        amount: txn.amount,
+        transaction_type: txn.transactionType,
+        description: txn.title,
+        transaction_date: txn.date,
+      }
+      const response = await transactionsApi.update(id, apiTxn)
+      const updatedTxn = normalizeTransaction(response.data)
+      setTransactions((prev) => prev.map((t) => (t.id === id ? updatedTxn : t)))
+      
+      // Update wallet balances (revert old transaction impact, apply new impact)
+      const originalTxn = transactions.find((t) => t.id === id)
+      if (originalTxn) {
+        const oldImpact =
+          originalTxn.transactionType === 'income'
+            ? originalTxn.amount
+            : -originalTxn.amount
+        const newImpact =
+          txn.transactionType === 'income' ? txn.amount : -txn.amount
+        const diff = newImpact - oldImpact
+
+        setWallets((prev) =>
+          prev.map((w) => {
+            const walletId = w.id.toString()
+            const oldWalletId = originalTxn.walletId.toString()
+            const newWalletId = txn.walletId.toString()
+
+            // Same wallet: just apply the difference
+            if (walletId === oldWalletId && walletId === newWalletId) {
+              return {
+                ...w,
+                balance: w.balance + diff,
+              }
+            }
+
+            // Wallet changed: revert old, apply to new
+            if (walletId === oldWalletId) {
+              return {
+                ...w,
+                balance: w.balance - oldImpact,
+              }
+            }
+            if (walletId === newWalletId) {
+              return {
+                ...w,
+                balance: w.balance + newImpact,
+              }
+            }
+
+            return w
+          }),
+        )
+      }
+    } catch (err) {
+      console.error('Error updating transaction:', err)
+      setError('Failed to update transaction')
+    }
+  }
+
   const handleDeleteTransaction = async (id: string) => {
     try {
       const txn = transactions.find((t) => t.id === id)
@@ -170,7 +318,7 @@ export default function Home() {
       
       setWallets((prev) =>
         prev.map((w) => {
-          if (w.id === txn.walletId) {
+          if (w.id.toString() === txn.walletId.toString()) {
             return {
               ...w,
               balance:
@@ -200,6 +348,27 @@ export default function Home() {
     }
   }
 
+  const handleUpdateWallet = async (id: string, wallet: Omit<Wallet, 'id'>) => {
+    try {
+      const response = await walletsApi.update(id, wallet)
+      const updatedWallet = response.data
+      setWallets((prev) => prev.map((w) => w.id === id ? updatedWallet : w))
+    } catch (err) {
+      console.error('Error updating wallet:', err)
+      setError('Failed to update wallet')
+    }
+  }
+
+  const handleDeleteWallet = async (id: string) => {
+    try {
+      await walletsApi.destroy(id)
+      setWallets((prev) => prev.filter((w) => w.id !== id))
+    } catch (err) {
+      console.error('Error deleting wallet:', err)
+      setError('Failed to delete wallet')
+    }
+  }
+
   const handleAddCategory = async (category: Omit<Category, 'id'>) => {
     try {
       const response = await categoriesApi.store(category)
@@ -211,10 +380,37 @@ export default function Home() {
     }
   }
 
+  const handleUpdateCategory = async (id: string, category: Omit<Category, 'id'>) => {
+    try {
+      const response = await categoriesApi.update(id, category)
+      const updatedCategory = response.data
+      setCategories((prev) => prev.map((c) => c.id === id ? updatedCategory : c))
+    } catch (err) {
+      console.error('Error updating category:', err)
+      setError('Failed to update category')
+    }
+  }
+
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await categoriesApi.destroy(id)
+      setCategories((prev) => prev.filter((c) => c.id !== id))
+    } catch (err) {
+      console.error('Error deleting category:', err)
+      setError('Failed to delete category')
+    }
+  }
+
   const handleAddBudget = async (budget: Omit<Budget, 'id'>) => {
     try {
-      const response = await budgetsApi.store(budget)
-      const newBudget = response.data
+      const apiBudget = {
+        category_id: budget.categoryId,
+        amount: budget.limitAmount,
+        month: budget.month,
+        year: budget.year,
+      }
+      const response = await budgetsApi.store(apiBudget)
+      const newBudget = normalizeBudget(response.data)
       setBudgets((prev) => [...prev, newBudget])
     } catch (err) {
       console.error('Error adding budget:', err)
@@ -222,18 +418,109 @@ export default function Home() {
     }
   }
 
-  const handleGenerateAnalysis = () => {
+  const handleUpdateBudget = async (id: string, budget: Omit<Budget, 'id'>) => {
+    try {
+      const apiBudget = {
+        category_id: budget.categoryId,
+        amount: budget.limitAmount,
+        month: budget.month,
+        year: budget.year,
+      }
+      const response = await budgetsApi.update(id, apiBudget)
+      const updatedBudget = normalizeBudget(response.data)
+      setBudgets((prev) => prev.map((b) => (b.id === id ? updatedBudget : b)))
+    } catch (err) {
+      console.error('Error updating budget:', err)
+      setError('Failed to update budget')
+    }
+  }
+
+  const handleDeleteBudget = async (id: string) => {
+    try {
+      await budgetsApi.destroy(id)
+      setBudgets((prev) => prev.filter((b) => b.id !== id))
+    } catch (err) {
+      console.error('Error deleting budget:', err)
+      setError('Failed to delete budget')
+    }
+  }
+
+  const handleGenerateAnalysis = async () => {
+    const totalIncome = transactions
+      .filter((t) => t.transactionType === 'income')
+      .reduce((sum, t) => sum + t.amount, 0)
+    const totalExpense = transactions
+      .filter((t) => t.transactionType === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0)
+
+    const budgetSummaries = budgets.map((b) => {
+      const spent = transactions
+        .filter((t) => t.transactionType === 'expense')
+        .filter((t) => t.categoryId === b.categoryId)
+        .reduce((sum, t) => sum + t.amount, 0)
+      const percent = b.limitAmount > 0 ? Math.min((spent / b.limitAmount) * 100, 999) : 0
+      return {
+        categoryId: b.categoryId,
+        spent,
+        limit: b.limitAmount,
+        percent,
+      }
+    })
+
+    const overBudgetCount = budgetSummaries.filter((b) => b.spent > b.limit).length
+
+    const mostExpensiveCategory = (() => {
+      const totals = transactions.reduce<Record<string, number>>((acc, t) => {
+        if (t.transactionType !== 'expense') return acc
+        const current = acc[t.categoryId] ?? 0
+        acc[t.categoryId] = current + t.amount
+        return acc
+      }, {})
+
+      const entries = Object.entries(totals)
+      if (!entries.length) return 'N/A'
+
+      const [topCatId] = entries.sort((a, b) => b[1] - a[1])[0]
+      return categories.find((c) => c.id === topCatId)?.name || 'N/A'
+    })()
+
+    const summaryText = `In the last ${transactions.length} transactions, you earned $${totalIncome.toFixed(
+      2,
+    )} and spent $${totalExpense.toFixed(2)}. You have ${budgets.length} budgets, ${overBudgetCount} of which are currently over budget.`
+
+    const aiResult = [
+      `• Total income: $${totalIncome.toFixed(2)}`,
+      `• Total expenses: $${totalExpense.toFixed(2)}`,
+      `• Most expensive category: ${mostExpensiveCategory}`,
+      overBudgetCount
+        ? `• You are over budget in ${overBudgetCount} category(ies). Consider reviewing those budgets.`
+        : '• All budgets are within limits. Great job!',
+    ].join('\n\n')
+
     const newAnalysis: AIAnalysisType = {
       id: `ana_${Date.now()}`,
-      userId: 'user_123',
+      userId: user?.id ?? 'unknown',
       month: new Date().getMonth() + 1,
       year: new Date().getFullYear(),
-      summaryText: `Just analyzed ${transactions.length} recent transactions across ${wallets.length} wallets.`,
-      aiResult:
-        'Based on your latest data, you are managing your expenses well. \n\n• Keep monitoring your discretionary spending.\n• Your recent budget additions look solid.\n• Consider reviewing your subscriptions next month.',
+      summaryText,
+      aiResult,
       createdAt: new Date().toISOString(),
     }
-    setAnalyses((prev) => [newAnalysis, ...prev])
+
+    try {
+      const response = await aiAnalysesApi.store({
+        month: newAnalysis.month,
+        year: newAnalysis.year,
+        summary_text: newAnalysis.summaryText,
+        ai_result: newAnalysis.aiResult,
+      })
+
+      const saved = normalizeAnalysis(response.data)
+      setAnalyses((prev) => [saved, ...prev])
+    } catch (err) {
+      console.error('Error saving analysis:', err)
+      setAnalyses((prev) => [newAnalysis, ...prev])
+    }
   }
 
   const renderPage = () => {
@@ -254,16 +541,19 @@ export default function Home() {
             categories={categories}
             wallets={wallets}
             onAddTransaction={handleAddTransaction}
+            onUpdateTransaction={handleUpdateTransaction}
             onDeleteTransaction={handleDeleteTransaction}
           />
         )
       case 'wallets':
-        return <Wallets wallets={wallets} onAddWallet={handleAddWallet} />
+        return <Wallets wallets={wallets} onAddWallet={handleAddWallet} onUpdateWallet={handleUpdateWallet} onDeleteWallet={handleDeleteWallet} />
       case 'categories':
         return (
           <Categories
             categories={categories}
             onAddCategory={handleAddCategory}
+            onUpdateCategory={handleUpdateCategory}
+            onDeleteCategory={handleDeleteCategory}
           />
         )
       case 'budgets':
@@ -273,6 +563,8 @@ export default function Home() {
             categories={categories}
             transactions={transactions}
             onAddBudget={handleAddBudget}
+            onUpdateBudget={handleUpdateBudget}
+            onDeleteBudget={handleDeleteBudget}
           />
         )
       case 'ai-analysis':
@@ -292,12 +584,17 @@ export default function Home() {
   }
 
   if (!isAuthenticated) {
-    return <Login />
+    return <AuthPage />
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      <Sidebar
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        user={user ?? undefined}
+        onLogout={handleLogout}
+      />
       <main className="flex-1 ml-20 lg:ml-64 p-4 md:p-8 overflow-x-hidden">
         {loading && (
           <div className="flex items-center justify-center py-12">

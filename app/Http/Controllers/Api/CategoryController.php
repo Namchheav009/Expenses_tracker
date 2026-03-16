@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class CategoryController extends Controller
 {
@@ -33,13 +34,13 @@ class CategoryController extends Controller
 
     public function show(Category $category): JsonResponse
     {
-        $this->authorize('view', $category);
+        Gate::authorize('view', $category);
         return response()->json($category);
     }
 
     public function update(Request $request, Category $category): JsonResponse
     {
-        $this->authorize('update', $category);
+        Gate::authorize('update', $category);
 
         $validated = $request->validate([
             'name' => 'string|max:255',
@@ -54,7 +55,7 @@ class CategoryController extends Controller
 
     public function destroy(Category $category): JsonResponse
     {
-        $this->authorize('delete', $category);
+        Gate::authorize('delete', $category);
         $category->delete();
         return response()->json(null, 204);
     }

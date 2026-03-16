@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Budget;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class BudgetController extends Controller
 {
@@ -35,7 +36,7 @@ class BudgetController extends Controller
 
     public function update(Request $request, Budget $budget): JsonResponse
     {
-        $this->authorize('update', $budget);
+        Gate::authorize('update', $budget);
 
         $validated = $request->validate([
             'amount' => 'numeric|min:0.01',
@@ -47,7 +48,7 @@ class BudgetController extends Controller
 
     public function destroy(Budget $budget): JsonResponse
     {
-        $this->authorize('delete', $budget);
+        Gate::authorize('delete', $budget);
         $budget->delete();
         return response()->json(null, 204);
     }

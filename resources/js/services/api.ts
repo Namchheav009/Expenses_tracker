@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api'
+const API_BASE_URL = '/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -26,7 +26,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('auth_token')
-      window.location.href = '/login'
+      // Redirect to the SPA login page (root) rather than the Laravel session-based login
+      window.location.href = '/'
     }
     return Promise.reject(error)
   }
@@ -66,6 +67,12 @@ export const budgetsApi = {
   show: (id: number | string) => api.get(`/budgets/${id}`),
   update: (id: number | string, data: any) => api.put(`/budgets/${id}`, data),
   destroy: (id: number | string) => api.delete(`/budgets/${id}`),
+}
+
+// AI Analysis API
+export const aiAnalysesApi = {
+  index: () => api.get('/ai-analyses'),
+  store: (data: any) => api.post('/ai-analyses', data),
 }
 
 export default api

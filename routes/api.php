@@ -7,9 +7,14 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\BudgetController;
+use App\Http\Controllers\Api\AIAnalysisController;
 
 // Public API routes
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
+
+// Simple helper to validate an email exists for login UX
+Route::get('/check-email', [AuthController::class, 'checkEmail']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
@@ -26,4 +31,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Budgets API
     Route::apiResource('budgets', BudgetController::class);
+
+    // AI Analyses API
+    Route::get('ai-analyses', [AIAnalysisController::class, 'index']);
+    Route::post('ai-analyses', [AIAnalysisController::class, 'store']);
 });

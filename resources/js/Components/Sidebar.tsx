@@ -11,8 +11,10 @@ import {
 interface SidebarProps {
   currentPage: string
   setCurrentPage: (page: string) => void
+  user?: { name: string; email: string }
+  onLogout?: () => void
 }
-export function Sidebar({ currentPage, setCurrentPage }: SidebarProps) {
+export function Sidebar({ currentPage, setCurrentPage, user, onLogout }: SidebarProps) {
   const navItems = [
     {
       id: 'dashboard',
@@ -86,13 +88,22 @@ export function Sidebar({ currentPage, setCurrentPage }: SidebarProps) {
       <div className="p-4 border-t border-slate-800">
         <div className="flex items-center justify-center lg:justify-start gap-3">
           <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0 border border-slate-600">
-            <span className="text-sm font-medium text-white">JD</span>
+            <span className="text-sm font-medium text-white">
+              {user?.name ? user.name.charAt(0) : 'U'}
+            </span>
           </div>
           <div className="hidden lg:block flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">John Doe</p>
-            <p className="text-xs text-slate-400 truncate">john@example.com</p>
+            <p className="text-sm font-medium text-white truncate">
+              {user?.name ?? 'User'}
+            </p>
+            <p className="text-xs text-slate-400 truncate">
+              {user?.email ?? 'Not signed in'}
+            </p>
           </div>
-          <button className="hidden lg:flex p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+          <button
+            onClick={() => onLogout?.()}
+            className="hidden lg:flex p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          >
             <LogOutIcon className="w-4 h-4" />
           </button>
         </div>

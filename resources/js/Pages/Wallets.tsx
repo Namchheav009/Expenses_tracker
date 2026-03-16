@@ -6,17 +6,23 @@ import {
   BuildingIcon,
   SmartphoneIcon,
   MoreVerticalIcon,
+  Edit2Icon,
+  Trash2Icon,
 } from 'lucide-react'
 import type { Wallet } from '../data/mockData'
 import { Modal } from '../Components/Modal'
+import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
 interface WalletsProps {
   wallets: Wallet[]
   onAddWallet: (wallet: Omit<Wallet, 'id'>) => void
+  onUpdateWallet: (id: string, wallet: Omit<Wallet, 'id'>) => void
+  onDeleteWallet: (id: string) => void
 }
-export function Wallets({ wallets, onAddWallet }: WalletsProps) {
+export function Wallets({ wallets, onAddWallet, onUpdateWallet, onDeleteWallet }: WalletsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [name, setName] = useState('')
   const [balance, setBalance] = useState('')
+  const [editingWallet, setEditingWallet] = useState<Wallet | null>(null)
   const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0)
   const getWalletIcon = (name: string) => {
     const lower = name.toLowerCase()
@@ -34,16 +40,36 @@ export function Wallets({ wallets, onAddWallet }: WalletsProps) {
     ]
     return colors[index % colors.length]
   }
+  const resetForm = () => {
+    setEditingWallet(null)
+    setName('')
+    setBalance('')
+  }
+
+  const handleDeleteWallet = async (id: string) => {
+    const confirmed = await confirmDelete('wallet')
+    if (!confirmed) return
+
+    onDeleteWallet(id)
+    showDeletedToast('Deleted!', 'Your wallet has been deleted.')
+  }
+
   const handleAddSubmit = () => {
     if (!name || !balance) return
-    onAddWallet({
+    const walletData = {
       userId: 'user_123',
       name,
       balance: parseFloat(balance),
-    })
+    }
+    if (editingWallet) {
+      onUpdateWallet(editingWallet.id, walletData)
+      showSavedToast('Wallet updated')
+    } else {
+      onAddWallet(walletData)
+      showSavedToast('Wallet added')
+    }
     setIsModalOpen(false)
-    setName('')
-    setBalance('')
+    resetForm()
   }
   return (
     <motion.div
@@ -109,9 +135,25 @@ export function Wallets({ wallets, onAddWallet }: WalletsProps) {
                   >
                     <Icon className="w-6 h-6 text-slate-700" />
                   </div>
-                  <button className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
-                    <MoreVerticalIcon className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => {
+                        setEditingWallet(wallet)
+                        setName(wallet.name)
+                        setBalance(wallet.balance.toString())
+                        setIsModalOpen(true)
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                    >
+                      <Edit2Icon className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteWallet(wallet.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                    >
+                      <Trash2Icon className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -133,26 +175,34 @@ export function Wallets({ wallets, onAddWallet }: WalletsProps) {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Add New Wallet"
+        onClose={() => {
+          setIsModalOpen(false)
+          resetForm()
+        }}
+        title={editingWallet ? 'Edit Wallet' : 'Add New Wallet'}
         footer={
           <div className="flex justify-end gap-3">
             <button
-              onClick={() => setIsModalOpen(false)}
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false)
+                resetForm()
+              }}
               className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleAddSubmit}
               className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors"
             >
-              Create Wallet
+              {editingWallet ? 'Update' : 'Create'} Wallet
             </button>
           </div>
         }
       >
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleAddSubmit(); }}>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Wallet Name
@@ -178,7 +228,7 @@ export function Wallets({ wallets, onAddWallet }: WalletsProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent"
             />
           </div>
-        </div>
+        </form>
       </Modal>
     </motion.div>
   )

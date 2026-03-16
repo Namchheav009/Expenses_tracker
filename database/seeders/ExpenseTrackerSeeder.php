@@ -16,12 +16,14 @@ class ExpenseTrackerSeeder extends Seeder
      */
     public function run(): void
     {
-        // Create a test user
-        $user = User::create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'password' => bcrypt('password'),
-        ]);
+        // Create a test user (idempotent)
+        $user = User::firstOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => bcrypt('password'),
+            ]
+        );
 
         // Create categories
         $categories = [
@@ -33,7 +35,13 @@ class ExpenseTrackerSeeder extends Seeder
         ];
 
         foreach ($categories as $cat) {
-            Category::create([...$cat, 'user_id' => $user->id]);
+            Category::updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'name' => $cat['name'],
+                ],
+                [...$cat, 'user_id' => $user->id]
+            );
         }
 
         // Create wallets
@@ -44,7 +52,13 @@ class ExpenseTrackerSeeder extends Seeder
         ];
 
         foreach ($wallets as $wallet) {
-            Wallet::create([...$wallet, 'user_id' => $user->id]);
+            Wallet::updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'name' => $wallet['name'],
+                ],
+                [...$wallet, 'user_id' => $user->id]
+            );
         }
 
         // Create sample transactions
@@ -53,52 +67,72 @@ class ExpenseTrackerSeeder extends Seeder
         $transportCategory = Category::where('user_id', $user->id)->where('name', 'Transportation')->first();
         $salaryCategory = Category::where('user_id', $user->id)->where('name', 'Salary')->first();
 
-        Transaction::create([
-            'user_id' => $user->id,
-            'wallet_id' => $wallet->id,
-            'category_id' => $groceriesCategory->id,
-            'amount' => 75.50,
-            'transaction_type' => 'expense',
-            'description' => 'Weekly groceries',
-            'transaction_date' => now()->subDays(5),
-        ]);
+        Transaction::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'wallet_id' => $wallet->id,
+                'category_id' => $groceriesCategory->id,
+                'description' => 'Weekly groceries',
+            ],
+            [
+                'amount' => 75.50,
+                'transaction_type' => 'expense',
+                'transaction_date' => now()->subDays(5),
+            ]
+        );
 
-        Transaction::create([
-            'user_id' => $user->id,
-            'wallet_id' => $wallet->id,
-            'category_id' => $transportCategory->id,
-            'amount' => 50.00,
-            'transaction_type' => 'expense',
-            'description' => 'Fuel',
-            'transaction_date' => now()->subDays(3),
-        ]);
+        Transaction::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'wallet_id' => $wallet->id,
+                'category_id' => $transportCategory->id,
+                'description' => 'Fuel',
+            ],
+            [
+                'amount' => 50.00,
+                'transaction_type' => 'expense',
+                'transaction_date' => now()->subDays(3),
+            ]
+        );
 
-        Transaction::create([
-            'user_id' => $user->id,
-            'wallet_id' => $wallet->id,
-            'category_id' => $salaryCategory->id,
-            'amount' => 5000.00,
-            'transaction_type' => 'income',
-            'description' => 'Monthly salary',
-            'transaction_date' => now()->subDays(10),
-        ]);
+        Transaction::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'wallet_id' => $wallet->id,
+                'category_id' => $salaryCategory->id,
+                'description' => 'Monthly salary',
+            ],
+            [
+                'amount' => 5000.00,
+                'transaction_type' => 'income',
+                'transaction_date' => now()->subDays(10),
+            ]
+        );
 
         // Create budgets
-        Budget::create([
-            'user_id' => $user->id,
-            'category_id' => $groceriesCategory->id,
-            'amount' => 300.00,
-            'month' => now()->month,
-            'year' => now()->year,
-        ]);
+        Budget::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'category_id' => $groceriesCategory->id,
+                'month' => now()->month,
+                'year' => now()->year,
+            ],
+            [
+                'amount' => 300.00,
+            ]
+        );
 
-        Budget::create([
-            'user_id' => $user->id,
-            'category_id' => $transportCategory->id,
-            'amount' => 200.00,
-            'month' => now()->month,
-            'year' => now()->year,
-        ]);
+        Budget::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'category_id' => $transportCategory->id,
+                'month' => now()->month,
+                'year' => now()->year,
+            ],
+            [
+                'amount' => 200.00,
+            ]
+        );
 
         // Generate and output API token for testing
         $token = $user->createToken('auth_token')->plainTextToken;
