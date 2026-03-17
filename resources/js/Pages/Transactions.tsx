@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   PlusIcon,
@@ -6,7 +6,7 @@ import {
   Edit2Icon,
   Trash2Icon,
 } from 'lucide-react'
-import type { Transaction, Category, Wallet } from '../data/mockData'
+import type { Transaction, Category, Wallet, User } from '../data/mockData'
 import { Modal } from '../Components/Modal'
 import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
 interface TransactionsProps {
@@ -16,6 +16,9 @@ interface TransactionsProps {
   onAddTransaction: (txn: Omit<Transaction, 'id' | 'createdAt'>) => void
   onUpdateTransaction: (id: string, txn: Omit<Transaction, 'id' | 'createdAt'>) => void
   onDeleteTransaction: (id: string) => void
+  isAdmin?: boolean
+  users?: User[]
+  currentUserId?: string
 }
 export function Transactions({
   transactions,
@@ -24,25 +27,58 @@ export function Transactions({
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
+  isAdmin = false,
+  users = [],
+  currentUserId = '',
 }: TransactionsProps) {
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>(
-    'all',
-  )
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null)
+
   // Form State
   const [formType, setFormType] = useState<'income' | 'expense'>('expense')
   const [formTitle, setFormTitle] = useState('')
   const [formAmount, setFormAmount] = useState('')
   const [formCategory, setFormCategory] = useState('')
   const [formWallet, setFormWallet] = useState('')
+  const [formUserId, setFormUserId] = useState<string>(users[0]?.id ?? '')
   const [formDate, setFormDate] = useState(
     new Date().toISOString().split('T')[0],
   )
   const [formNote, setFormNote] = useState('')
+
+  // Filters
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all')
+  const [filterUser, setFilterUser] = useState<string>('all')
+
+  // Keep default form user in sync when users prop changes
+  useEffect(() => {
+    if (isAdmin && users.length > 0) {
+      setFormUserId(users[0].id)
+    } else if (!isAdmin) {
+      setFormUserId(currentUserId)
+    }
+  }, [isAdmin, users, currentUserId])
+
+  const userIdsInTransactions = isAdmin
+    ? [...new Set(transactions.map((t) => t.userId))]
+    : []
+
+  const getUserName = (userId: string) => {
+    const user = users.find((u) => u.id === userId)
+    return user?.username || user?.name || userId
+  }
+
   const filteredTransactions = transactions
     .filter((t) => filterType === 'all' || t.transactionType === filterType)
+    .filter((t) =>
+      isAdmin
+        ? filterUser === 'all' || t.userId === filterUser
+        : t.userId === currentUserId,
+    )
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const colSpan = isAdmin ? 7 : 6
+
   const resetForm = () => {
     setEditingTxn(null)
     setFormType('expense')
@@ -50,8 +86,11 @@ export function Transactions({
     setFormAmount('')
     setFormCategory('')
     setFormWallet('')
-    setFormDate(new Date().toISOString().split('T')[0])
     setFormNote('')
+    setFormDate(new Date().toISOString().split('T')[0])
+    if (isAdmin && users.length > 0) {
+      setFormUserId(users[0].id)
+    }
   }
 
   const handleDeleteTransaction = async (id: string) => {
@@ -65,8 +104,9 @@ export function Transactions({
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formTitle || !formAmount || !formCategory || !formWallet) return
+
     const txnData = {
-      userId: 'user_123',
+      userId: isAdmin ? formUserId : currentUserId,
       title: formTitle,
       amount: parseFloat(formAmount),
       transactionType: formType,
@@ -75,6 +115,7 @@ export function Transactions({
       date: formDate,
       note: formNote,
     }
+
     if (editingTxn) {
       onUpdateTransaction(editingTxn.id, txnData)
       showSavedToast('Transaction updated')
@@ -82,6 +123,7 @@ export function Transactions({
       onAddTransaction(txnData)
       showSavedToast('Transaction added')
     }
+
     setIsModalOpen(false)
     resetForm()
   }
@@ -99,7 +141,9 @@ export function Transactions({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Transactions</h1>
           <p className="text-slate-500 mt-1">
-            Manage your daily income and expenses.
+            {isAdmin
+              ? "View and manage all users' transactions."
+              : 'Manage your daily income and expenses.'}
           </p>
         </div>
         <button
@@ -118,7 +162,7 @@ export function Transactions({
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-lg text-slate-600">
           <FilterIcon className="w-4 h-4" />
-          <span className="text-sm font-medium">Filter by:</span>
+          <span className="text-sm font-medium">Filter:</span>
         </div>
         <div className="flex bg-slate-100 p-1 rounded-lg">
           {(['all', 'income', 'expense'] as const).map((type) => (
@@ -131,6 +175,21 @@ export function Transactions({
             </button>
           ))}
         </div>
+
+        {isAdmin && userIdsInTransactions.length > 1 && (
+          <select
+            value={filterUser}
+            onChange={(e) => setFilterUser(e.target.value)}
+            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+          >
+            <option value="all">All Users</option>
+            {userIdsInTransactions.map((uid) => (
+              <option key={uid} value={uid}>
+                {getUserName(uid)}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Table */}
@@ -139,6 +198,9 @@ export function Transactions({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">
+                {isAdmin && (
+                  <th className="px-6 py-4 font-medium">Owner</th>
+                )}
                 <th className="px-6 py-4 font-medium">Date</th>
                 <th className="px-6 py-4 font-medium">Title</th>
                 <th className="px-6 py-4 font-medium">Category</th>
@@ -151,7 +213,7 @@ export function Transactions({
               {filteredTransactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={colSpan}
                     className="px-6 py-12 text-center text-slate-500"
                   >
                     No transactions found.
@@ -221,8 +283,9 @@ export function Transactions({
                               setFormAmount(txn.amount.toString())
                               setFormCategory(txn.categoryId)
                               setFormWallet(txn.walletId)
+                              setFormUserId(txn.userId)
                               setFormDate(txn.date)
-                              setFormNote('')
+                              setFormNote(txn.note || '')
                               setIsModalOpen(true)
                             }} />
                           </button>
@@ -290,6 +353,24 @@ export function Transactions({
             </button>
           </div>
 
+          {isAdmin && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                User
+              </label>
+              <select
+                value={formUserId}
+                onChange={(e) => setFormUserId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+              >
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.username || user.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Title

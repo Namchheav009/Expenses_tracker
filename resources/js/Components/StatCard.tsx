@@ -2,21 +2,24 @@
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import { TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
+
 interface StatCardProps {
   title: string
-  value: string
+  value: string | number
   icon: LucideIcon
-  trend?: 'up' | 'down' | 'neutral'
-  trendValue?: string
+  trend?: {
+    value: number
+    isPositive: boolean
+  }
   colorClass: string
   delay?: number
 }
+
 export function StatCard({
   title,
   value,
   icon: Icon,
   trend,
-  trendValue,
   colorClass,
   delay = 0,
 }: StatCardProps) {
@@ -46,24 +49,21 @@ export function StatCard({
         </div>
       </div>
 
-      {trend && trendValue && (
+      {trend && (
         <div className="mt-4 flex items-center text-sm">
-          {trend === 'up' && (
+          {trend.isPositive ? (
             <TrendingUpIcon className="w-4 h-4 text-emerald-500 mr-1" />
-          )}
-          {trend === 'down' && (
+          ) : (
             <TrendingDownIcon className="w-4 h-4 text-rose-500 mr-1" />
           )}
           <span
             className={
-              trend === 'up'
+              trend.isPositive
                 ? 'text-emerald-600 font-medium'
-                : trend === 'down'
-                  ? 'text-rose-600 font-medium'
-                  : 'text-slate-500 font-medium'
+                : 'text-rose-600 font-medium'
             }
           >
-            {trendValue}
+            {trend.isPositive ? '+' : ''}{trend.value}%
           </span>
           <span className="text-slate-400 ml-1.5">vs last month</span>
         </div>

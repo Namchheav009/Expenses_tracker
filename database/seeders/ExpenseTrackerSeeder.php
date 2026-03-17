@@ -17,11 +17,23 @@ class ExpenseTrackerSeeder extends Seeder
     public function run(): void
     {
         // Create a test user (idempotent)
+        // Create an admin user (idempotent)
+        $adminUser = User::firstOrCreate(
+            ['email' => 'admin@example.com'],
+            [
+                'name' => 'Admin User',
+                'password' => bcrypt('password'),
+                'role' => 'admin',
+            ]
+        );
+
+        // Create a standard test user (idempotent)
         $user = User::firstOrCreate(
             ['email' => 'test@example.com'],
             [
                 'name' => 'Test User',
                 'password' => bcrypt('password'),
+                'role' => 'user',
             ]
         );
 

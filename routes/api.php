@@ -35,4 +35,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // AI Analyses API
     Route::get('ai-analyses', [AIAnalysisController::class, 'index']);
     Route::post('ai-analyses', [AIAnalysisController::class, 'store']);
+
+    // Admin-only endpoints
+    Route::get('admin/stats', [\App\Http\Controllers\Api\AdminController::class, 'stats'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::get('admin/users', [\App\Http\Controllers\Api\AdminController::class, 'users'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::delete('admin/users/{id}', [\App\Http\Controllers\Api\AdminController::class, 'deleteUser'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::put('admin/users/{id}/role', [\App\Http\Controllers\Api\AdminController::class, 'updateUserRole'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::put('admin/users/{id}/status', [\App\Http\Controllers\Api\AdminController::class, 'updateUserStatus'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
 });

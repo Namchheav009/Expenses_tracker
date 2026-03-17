@@ -186,8 +186,7 @@ export function Dashboard({
             minimumFractionDigits: 2,
           })}`}
           icon={TrendingUpIcon}
-          trend={incomeTrend >= 0 ? "up" : "down"}
-          trendValue={`${incomeTrend >= 0 ? '+' : ''}${incomeTrend.toFixed(1)}%`}
+          trend={{ value: Math.abs(incomeTrend), isPositive: incomeTrend >= 0 }}
           colorClass="bg-emerald-100 text-emerald-600"
           delay={0.2}
         />
@@ -197,8 +196,7 @@ export function Dashboard({
             minimumFractionDigits: 2,
           })}`}
           icon={TrendingDownIcon}
-          trend={expenseTrend <= 0 ? "down" : "up"}
-          trendValue={`${expenseTrend >= 0 ? '+' : ''}${expenseTrend.toFixed(1)}%`}
+          trend={{ value: Math.abs(expenseTrend), isPositive: expenseTrend >= 0 }}
           colorClass="bg-rose-100 text-rose-600"
           delay={0.3}
         />

@@ -36,11 +36,12 @@ export async function confirmLogout() {
   return result.isConfirmed
 }
 
-export function showSavedToast(title = 'Your work has been saved') {
+export function showSavedToast(title = 'Your work has been saved', text?: string) {
   Swal.fire({
     position: 'top-end',
     icon: 'success',
     title,
+    text,
     showConfirmButton: false,
     timer: 1500,
   })

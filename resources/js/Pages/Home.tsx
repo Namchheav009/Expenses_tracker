@@ -6,6 +6,8 @@ import { Wallets } from './Wallets'
 import { Categories } from './Categories'
 import { Budgets } from './Budgets'
 import { AIAnalysis } from './AIAnalysis'
+import { Admin } from './AdminPanel'
+import { Users } from './Users'
 import AuthPage from './Auth/AuthPage'
 import {
   mockTransactions,
@@ -13,6 +15,7 @@ import {
   mockCategories,
   mockBudgets,
   mockAnalyses,
+  User,
 } from '@/data/mockData'
 import type {
   Transaction,
@@ -27,21 +30,30 @@ import api, {
   transactionsApi,
   budgetsApi,
   aiAnalysesApi,
+  adminApi,
 } from '@/services/api'
 import { confirmLogout, showSavedToast } from '@/Components/confirmDelete'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [currentPage, setCurrentPage] = useState('dashboard')
+  const [currentPage, setCurrentPage] = useState<string>(() => {
+    return localStorage.getItem('currentPage') || 'dashboard'
+  })
   const [transactions, setTransactions] =
     useState<Transaction[]>(mockTransactions)
   const [wallets, setWallets] = useState<Wallet[]>(mockWallets)
   const [categories, setCategories] = useState<Category[]>(mockCategories)
   const [budgets, setBudgets] = useState<Budget[]>(mockBudgets)
   const [analyses, setAnalyses] = useState<AIAnalysisType[]>(mockAnalyses)
-  const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null)
+  const [users, setUsers] = useState<User[]>([])
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const setCurrentPageAndPersist = (page: string) => {
+    setCurrentPage(page)
+    localStorage.setItem('currentPage', page)
+  }
 
   const normalizeTransaction = (t: any): Transaction => ({
     ...t,
@@ -105,7 +117,6 @@ export default function Home() {
 
       try {
         setLoading(true)
-        setIsAuthenticated(true)
 
         const [userRes, catRes, walletRes, txnRes, budgetRes, analysisRes] = await Promise.all([
           api.get('/user'),
@@ -116,11 +127,29 @@ export default function Home() {
           aiAnalysesApi.index(),
         ])
 
-        setUser({
+        const currentUser = {
           id: String(userRes.data.id),
           name: userRes.data.name,
           email: userRes.data.email,
-        })
+          role: userRes.data.role ?? 'user',
+        }
+
+        setUser(currentUser)
+        setIsAuthenticated(true)
+
+        // If admin, default to admin panel unless user already selected a different page.
+        if (currentUser.role === 'admin') {
+          const storedPage = localStorage.getItem('currentPage')
+          if (!storedPage || storedPage === 'dashboard') {
+            setCurrentPageAndPersist('admin')
+          }
+        } else {
+          // Ensure non-admin users don't land on admin pages
+          const storedPage = localStorage.getItem('currentPage')
+          if (storedPage === 'admin' || storedPage === 'users') {
+            setCurrentPageAndPersist('dashboard')
+          }
+        }
 
         console.log('API Responses:', { catRes, walletRes, txnRes, budgetRes })
 
@@ -133,6 +162,16 @@ export default function Home() {
             type: c.type || 'expense',
           }))
         )
+
+        // If admin, load all users for admin data views
+        if (currentUser.role === 'admin') {
+          try {
+            const usersRes = await adminApi.users()
+            setUsers(usersRes.data?.data ?? usersRes.data ?? [])
+          } catch (err) {
+            console.error('Failed to load users for admin:', err)
+          }
+        }
         // Normalize wallets
         setWallets(
           (walletRes.data?.data || walletRes.data || mockWallets).map((w: any) => ({
@@ -207,6 +246,14 @@ export default function Home() {
     setTimeout(() => {
       window.location.reload()
     }, 800)
+  }
+
+  const handleEditUser = (user: User) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === user.id ? { ...u, ...user } : u
+      )
+    )
   }
 
   const handleAddTransaction = async (txn: Omit<Transaction, 'id' | 'createdAt'>) => {
@@ -543,6 +590,9 @@ export default function Home() {
             onAddTransaction={handleAddTransaction}
             onUpdateTransaction={handleUpdateTransaction}
             onDeleteTransaction={handleDeleteTransaction}
+            isAdmin={user?.role === 'admin'}
+            users={users}
+            currentUserId={user?.id ?? ''}
           />
         )
       case 'wallets':
@@ -571,6 +621,31 @@ export default function Home() {
         return (
           <AIAnalysis analyses={analyses} onGenerate={handleGenerateAnalysis} />
         )
+      case 'admin':
+        return user?.role === 'admin' ? (
+          <Admin
+            users={users}
+            transactions={transactions}
+            wallets={wallets}
+            categories={categories}
+            budgets={budgets}
+            onEditUser={handleEditUser}
+          />
+        ) : (
+          <Dashboard
+            transactions={transactions}
+            wallets={wallets}
+            budgets={budgets}
+            categories={categories}
+          />
+        )
+      case 'users':
+        return user?.role === 'admin' ? <Users /> : <Dashboard
+          transactions={transactions}
+          wallets={wallets}
+          budgets={budgets}
+          categories={categories}
+        />
       default:
         return (
           <Dashboard
@@ -583,16 +658,38 @@ export default function Home() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!isAuthenticated) {
     return <AuthPage />
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <Sidebar
         currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
-        user={user ?? undefined}
+        setCurrentPage={setCurrentPageAndPersist}
+        currentUser={user ?? { id: '', name: 'Loading...', email: '', role: 'user' }}
         onLogout={handleLogout}
       />
       <main className="flex-1 ml-20 lg:ml-64 p-4 md:p-8 overflow-x-hidden">

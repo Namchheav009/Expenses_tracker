@@ -46,6 +46,15 @@ export interface AIAnalysis {
   createdAt: string
 }
 
+export interface User {
+  id: string
+  name: string
+  email: string
+  role?: 'admin' | 'user'
+  username?: string
+  isActive?: boolean
+}
+
 const USER_ID = 'user_123'
 const CURRENT_YEAR = new Date().getFullYear()
 const CURRENT_MONTH = new Date().getMonth() + 1

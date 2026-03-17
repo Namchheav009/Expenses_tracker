@@ -75,4 +75,17 @@ export const aiAnalysesApi = {
   store: (data: any) => api.post('/ai-analyses', data),
 }
 
+// Admin API
+export const adminApi = {
+  stats: () => api.get('/admin/stats'),
+  users: () => api.get('/admin/users'),
+  createUser: (data: any) => api.post('/admin/users', data),
+  updateUser: (id: string | number, data: any) => api.put(`/admin/users/${id}`, data),
+  deleteUser: (id: string | number) => api.delete(`/admin/users/${id}`),
+  updateUserPassword: (id: string | number, password: string) => api.put(`/admin/users/${id}/password`, { password }),
+  updateUserRole: (id: string | number, role: 'admin' | 'user') => api.put(`/admin/users/${id}/role`, { role }),
+  updateUserStatus: (id: string | number, isActive: boolean) => api.put(`/admin/users/${id}/status`, { is_active: isActive }),
+  activityLogs: () => api.get('/admin/activity-logs'),
+}
+
 export default api
