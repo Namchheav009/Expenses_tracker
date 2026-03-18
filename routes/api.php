@@ -43,6 +43,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('admin/users', [\App\Http\Controllers\Api\AdminController::class, 'users'])
         ->middleware(\App\Http\Middleware\EnsureAdmin::class);
 
+    Route::post('admin/users', [\App\Http\Controllers\Api\AdminController::class, 'createUser'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::put('admin/users/{id}', [\App\Http\Controllers\Api\AdminController::class, 'updateUser'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
     Route::delete('admin/users/{id}', [\App\Http\Controllers\Api\AdminController::class, 'deleteUser'])
         ->middleware(\App\Http\Middleware\EnsureAdmin::class);
 
@@ -50,5 +56,34 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware(\App\Http\Middleware\EnsureAdmin::class);
 
     Route::put('admin/users/{id}/status', [\App\Http\Controllers\Api\AdminController::class, 'updateUserStatus'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::put('admin/users/{id}/password', [\App\Http\Controllers\Api\AdminController::class, 'updateUserPassword'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    // Admin transaction management routes
+    Route::get('admin/transactions', [\App\Http\Controllers\Api\AdminController::class, 'transactions'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::post('admin/transactions', [\App\Http\Controllers\Api\AdminController::class, 'createTransaction'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::put('admin/transactions/{id}', [\App\Http\Controllers\Api\AdminController::class, 'updateTransaction'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::delete('admin/transactions/{id}', [\App\Http\Controllers\Api\AdminController::class, 'deleteTransaction'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    // Admin wallet management routes
+    Route::get('admin/wallets', [\App\Http\Controllers\Api\AdminController::class, 'wallets'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::post('admin/wallets', [\App\Http\Controllers\Api\AdminController::class, 'createWallet'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::put('admin/wallets/{id}', [\App\Http\Controllers\Api\AdminController::class, 'updateWallet'])
+        ->middleware(\App\Http\Middleware\EnsureAdmin::class);
+
+    Route::delete('admin/wallets/{id}', [\App\Http\Controllers\Api\AdminController::class, 'deleteWallet'])
         ->middleware(\App\Http\Middleware\EnsureAdmin::class);
 });

@@ -53,6 +53,7 @@ export interface User {
   role?: 'admin' | 'user'
   username?: string
   isActive?: boolean
+  dateJoined?: string
 }
 
 const USER_ID = 'user_123'

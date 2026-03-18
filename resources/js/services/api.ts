@@ -86,6 +86,16 @@ export const adminApi = {
   updateUserRole: (id: string | number, role: 'admin' | 'user') => api.put(`/admin/users/${id}/role`, { role }),
   updateUserStatus: (id: string | number, isActive: boolean) => api.put(`/admin/users/${id}/status`, { is_active: isActive }),
   activityLogs: () => api.get('/admin/activity-logs'),
+  // Admin transaction management
+  transactions: () => api.get('/admin/transactions'),
+  createTransaction: (data: any) => api.post('/admin/transactions', data),
+  updateTransaction: (id: string | number, data: any) => api.put(`/admin/transactions/${id}`, data),
+  deleteTransaction: (id: string | number) => api.delete(`/admin/transactions/${id}`),
+  // Admin wallet management
+  wallets: () => api.get('/admin/wallets'),
+  createWallet: (data: any) => api.post('/admin/wallets', data),
+  updateWallet: (id: string | number, data: any) => api.put(`/admin/wallets/${id}`, data),
+  deleteWallet: (id: string | number) => api.delete(`/admin/wallets/${id}`),
 }
 
 export default api

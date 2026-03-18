@@ -11,9 +11,13 @@ class BudgetController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $budgets = Budget::where('user_id', $request->user()->id)
-            ->with('category')
-            ->get();
+        $query = Budget::with('category');
+
+        if (!$request->user()->isAdmin()) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        $budgets = $query->get();
         return response()->json($budgets);
     }
 
@@ -24,11 +28,16 @@ class BudgetController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'month' => 'required|integer|between:1,12',
             'year' => 'required|integer|min:2000',
+            'user_id' => 'sometimes|required|exists:users,id',
         ]);
+
+        $userId = $request->user()->isAdmin() && isset($validated['user_id'])
+            ? $validated['user_id']
+            : $request->user()->id;
 
         $budget = Budget::create([
             ...$validated,
-            'user_id' => $request->user()->id,
+            'user_id' => $userId,
         ]);
 
         return response()->json($budget->load('category'), 201);
@@ -40,7 +49,17 @@ class BudgetController extends Controller
 
         $validated = $request->validate([
             'amount' => 'numeric|min:0.01',
+            'user_id' => 'sometimes|required|exists:users,id',
         ]);
+
+        if ($request->user()->isAdmin()) {
+            if (isset($validated['user_id'])) {
+                $budget->user_id = $validated['user_id'];
+            }
+        } else {
+            // Prevent non-admin users from reassiging budgets to others.
+            unset($validated['user_id']);
+        }
 
         $budget->update($validated);
         return response()->json($budget->load('category'));

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, Fragment } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ActivityIcon,
@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { StatCard } from '@/Components/StatCard'
 import { Modal } from '@/Components/Modal'
-import { adminApi } from '@/services/api'
+import api, { adminApi } from '@/services/api'
 import { showSavedToast } from '@/Components/confirmDelete'
 import type { User, Transaction, Wallet, Category, Budget } from '@/data/mockData'
 
@@ -65,12 +65,41 @@ const generateActivityLogs = (
   const logs: ActivityLog[] = []
   let timeOffset = 0
 
+  // Add user join activities (if date info is available)
+  users.forEach((u) => {
+    const joinDate =
+      // common naming variations from different APIs
+      (u as any).dateJoined || (u as any).created_at || (u as any).createdAt
+    const timestamp = joinDate
+      ? new Date(joinDate).toISOString()
+      : new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
+
+    logs.push({
+      id: `user_${u.id}`,
+      user: u.name || u.username || 'Unknown',
+      action: 'Joined the platform',
+      target: u.email || 'Unknown email',
+      timestamp,
+      type: 'success',
+    })
+    timeOffset += 10
+  })
+
   // Add transaction activities
   transactions.forEach((t, idx) => {
     const user = users.find((u) => u.id === t.userId)
     const wallet = wallets.find((w) => w.id === t.walletId)
-    const timestamp = new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
-    
+    let timestamp =
+      (t as any).date || (t as any).transaction_date ||
+      (t as any).createdAt || (t as any).created_at ||
+      new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
+
+    // Ensure timestamp is valid and not in the future
+    const parsedDate = new Date(timestamp)
+    if (isNaN(parsedDate.getTime()) || parsedDate > new Date()) {
+      timestamp = new Date().toISOString()
+    }
+
     logs.push({
       id: `txn_${t.id}`,
       user: user?.name || user?.username || 'Unknown',
@@ -85,8 +114,16 @@ const generateActivityLogs = (
   // Add wallet creation activities
   wallets.forEach((w, idx) => {
     const user = users.find((u) => u.id === w.userId)
-    const timestamp = new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
-    
+    let timestamp =
+      (w as any).createdAt || (w as any).created_at ||
+      new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
+
+    // Ensure timestamp is valid and not in the future
+    const parsedDate = new Date(timestamp)
+    if (isNaN(parsedDate.getTime()) || parsedDate > new Date()) {
+      timestamp = new Date().toISOString()
+    }
+
     logs.push({
       id: `wallet_${w.id}`,
       user: user?.name || user?.username || 'Unknown',
@@ -102,8 +139,16 @@ const generateActivityLogs = (
   budgets.forEach((b, idx) => {
     const user = users.find((u) => u.id === b.userId)
     const category = categories.find((c: Category) => c.id === b.categoryId)
-    const timestamp = new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
-    
+    let timestamp =
+      (b as any).createdAt || (b as any).created_at ||
+      new Date(Date.now() - timeOffset * 1000 * 60).toISOString()
+
+    // Ensure timestamp is valid and not in the future
+    const parsedDate = new Date(timestamp)
+    if (isNaN(parsedDate.getTime()) || parsedDate > new Date()) {
+      timestamp = new Date().toISOString()
+    }
+
     logs.push({
       id: `budget_${b.id}`,
       user: user?.name || user?.username || 'Unknown',
@@ -119,9 +164,7 @@ const generateActivityLogs = (
   return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 }
 
-
-
-export function Admin({
+const AdminPanel: React.FC<AdminProps> = ({
   users,
   transactions,
   wallets,
@@ -129,13 +172,30 @@ export function Admin({
   budgets,
   onEditUser,
   onRefresh,
-}: AdminProps) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user'>('all')
+}) => {
+  const [localUsers, setLocalUsers] = useState<User[]>(users)
+  const [localTransactions, setLocalTransactions] = useState<Transaction[]>(transactions)
+  const [localWallets, setLocalWallets] = useState<Wallet[]>(wallets)
+  const [localCategories, setLocalCategories] = useState<Category[]>(categories)
+  const [localBudgets, setLocalBudgets] = useState<Budget[]>(budgets)
+
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
-  const [displayedLogsCount, setDisplayedLogsCount] = useState(3)
-  const [isLoadingMoreLogs, setIsLoadingMoreLogs] = useState(false)
+
+  // Sync with parent updates (e.g., when other pages modify data)
+  useEffect(() => {
+    setLocalUsers(users)
+    setLocalTransactions(transactions)
+    setLocalWallets(wallets)
+    setLocalCategories(categories)
+    setLocalBudgets(budgets)
+
+    // Regenerate activity logs to reflect the latest data immediately
+    setActivityLogs(
+      generateActivityLogs(transactions, wallets, budgets, users, categories),
+    )
+  }, [users, transactions, wallets, categories, budgets])
+
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false)
   const [stats, setStats] = useState<{
     totalUsers: number
@@ -159,74 +219,127 @@ export function Admin({
     username: '',
   })
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [sortBy, setSortBy] = useState<'role' | 'dateJoined' | 'username'>('role')
+
   // Fetch activity logs and stats on mount
+  const fetchAdminData = useCallback(async () => {
+    try {
+      const [usersRes, txRes, walletRes, catRes, budgetRes, statsRes, logsRes] = await Promise.all([
+        adminApi.users(),
+        api.get('/transactions'),
+        api.get('/wallets'),
+        api.get('/categories'),
+        api.get('/budgets'),
+        adminApi.stats(),
+        adminApi.activityLogs(),
+      ])
+
+      setLocalUsers(usersRes.data?.data || usersRes.data || [])
+      setLocalTransactions(txRes.data?.data || txRes.data || [])
+      setLocalWallets(walletRes.data?.data || walletRes.data || [])
+      setLocalCategories(catRes.data?.data || catRes.data || [])
+      setLocalBudgets(budgetRes.data?.data || budgetRes.data || [])
+      setStats(statsRes.data)
+
+      const payload = logsRes.data
+      const logsFromApi = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : []
+
+      if (logsFromApi.length > 0) {
+        setActivityLogs(logsFromApi)
+      } else {
+        const generatedLogs = generateActivityLogs(
+          txRes.data?.data || txRes.data || [],
+          walletRes.data?.data || walletRes.data || [],
+          budgetRes.data?.data || budgetRes.data || [],
+          usersRes.data?.data || usersRes.data || [],
+          catRes.data?.data || catRes.data || [],
+        )
+        setActivityLogs(generatedLogs)
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin data:', err)
+      // fallback to local props if available
+      setLocalUsers(users)
+      setLocalTransactions(transactions)
+      setLocalWallets(wallets)
+      setLocalCategories(categories)
+      setLocalBudgets(budgets)
+      updateLocalStats()
+      const generatedLogs = generateActivityLogs(transactions, wallets, budgets, users, categories)
+      setActivityLogs(generatedLogs)
+    }
+  }, [])
+
   useEffect(() => {
-    const fetchActivityLogs = async () => {
-      try {
-        const response = await adminApi.activityLogs()
-        setActivityLogs(response.data)
-      } catch (err) {
-        console.error('Failed to fetch activity logs:', err)
-        // Generate logs from actual user data as fallback
-        const generatedLogs = generateActivityLogs(transactions, wallets, budgets, users, categories)
-        setActivityLogs(generatedLogs.length > 0 ? generatedLogs : [])
-      }
+    // Initial load
+    void fetchAdminData()
+  }, [fetchAdminData])
+
+  // Poll for updates every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void fetchAdminData()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [fetchAdminData])
+
+  // Automatically refresh when other parts of the app signal data changes
+  useEffect(() => {
+    const handler = () => {
+      void fetchAdminData()
     }
 
-    const fetchStats = async () => {
-      try {
-        const response = await adminApi.stats()
-        setStats(response.data)
-      } catch (err) {
-        console.error('Failed to fetch stats:', err)
-        // Immediately use fallback calculation
-        updateLocalStats()
-      }
-    }
-
-    fetchActivityLogs()
-    fetchStats()
-  }, [transactions, wallets, budgets, users, categories])
+    window.addEventListener('admin:data-changed', handler)
+    return () => window.removeEventListener('admin:data-changed', handler)
+  }, [fetchAdminData])
 
   // Update stats whenever data changes
   useEffect(() => {
     updateLocalStats()
-  }, [users, transactions, wallets, categories, budgets])
+  }, [localUsers, localTransactions, localWallets, localCategories, localBudgets])
 
   const updateLocalStats = () => {
     setStats({
-      totalUsers: users.length,
-      adminCount: users.filter((u) => u.role === 'admin').length,
-      activeCount: users.filter((u) => u.isActive).length,
-      inactiveCount: users.filter((u) => !u.isActive).length,
-      totalBalance: wallets.reduce((s, w) => s + (w.balance || 0), 0),
-      totalTransactions: transactions.length,
-      totalCategories: categories.length,
-      totalBudgets: budgets.length,
+      totalUsers: localUsers.length,
+      adminCount: localUsers.filter((u) => u.role === 'admin').length,
+      activeCount: localUsers.filter((u) => u.isActive).length,
+      inactiveCount: localUsers.filter((u) => !u.isActive).length,
+      totalBalance: localWallets.reduce((s, w) => s + (w.balance || 0), 0),
+      totalTransactions: localTransactions.length,
+      totalCategories: localCategories.length,
+      totalBudgets: localBudgets.length,
     })
   }
 
   // Stats
-  const calculatedTotalBalance = wallets.reduce((s, w) => s + (w.balance || 0), 0)
-  const totalUsers = stats?.totalUsers ?? users.length
-  const adminCount = stats?.adminCount ?? users.filter((u) => u.role === 'admin').length
-  const activeCount = stats?.activeCount ?? users.filter((u) => u.isActive).length
-  const inactiveCount = stats?.inactiveCount ?? users.filter((u) => !u.isActive).length
+  const calculatedTotalBalance = localWallets.reduce((s, w) => s + (w.balance || 0), 0)
+  const totalUsers = stats?.totalUsers ?? localUsers.length
+  const adminCount = stats?.adminCount ?? localUsers.filter((u) => u.role === 'admin').length
+  const activeCount = stats?.activeCount ?? localUsers.filter((u) => u.isActive).length
+  const inactiveCount = stats?.inactiveCount ?? localUsers.filter((u) => !u.isActive).length
   const totalBalance = stats?.totalBalance !== undefined && stats?.totalBalance !== null ? stats.totalBalance : calculatedTotalBalance
-  const totalTransactions = stats?.totalTransactions ?? transactions.length
-  const totalCategories = stats?.totalCategories ?? categories.length
-  const totalBudgets = stats?.totalBudgets ?? budgets.length
+  const totalTransactions = stats?.totalTransactions ?? localTransactions.length
+  const totalCategories = stats?.totalCategories ?? localCategories.length
+  const totalBudgets = stats?.totalBudgets ?? localBudgets.length
 
   // Selected user data
-  const selectedUser = users.find((u) => u.id === selectedUserId)
-  const selectedUserWallets = wallets.filter((w) => w.userId === selectedUserId)
-  const selectedUserTransactions = transactions
+  const selectedUser = localUsers.find((u) => u.id === selectedUserId)
+  const selectedUserWallets = localWallets.filter((w) => w.userId === selectedUserId)
+  const selectedUserTransactions = localTransactions
     .filter((t) => t.userId === selectedUserId)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  const selectedUserCategories = categories.filter(
+  const selectedUserCategories = localCategories.filter(
     (c) => c.userId === selectedUserId,
   )
-  const selectedUserBudgets = budgets.filter((b) => b.userId === selectedUserId)
+  const selectedUserBudgets = localBudgets.filter((b) => b.userId === selectedUserId)
 
   // Per-user summary for the table
   const getUserSummary = (userId: string) => {
@@ -243,7 +356,7 @@ export function Admin({
   }
 
   const filteredUsers = useMemo(() => {
-    return users
+    return localUsers
       .filter((u) => {
         const matchesSearch =
           u.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -252,14 +365,25 @@ export function Admin({
           roleFilter === 'all' ||
           (roleFilter === 'admin' && u.role === 'admin') ||
           (roleFilter === 'user' && u.role === 'user')
-        return matchesSearch && matchesRole
+        const matchesStatus =
+          statusFilter === 'all' ||
+          (statusFilter === 'active' && u.isActive) ||
+          (statusFilter === 'inactive' && !u.isActive)
+        return matchesSearch && matchesRole && matchesStatus
       })
       .sort((a, b) => {
-        if (a.role === 'admin' && b.role !== 'admin') return -1
-        if (a.role !== 'admin' && b.role === 'admin') return 1
-        return a.username?.localeCompare(b.username ?? '') ?? 0
+        if (sortBy === 'role') {
+          if (a.role === 'admin' && b.role !== 'admin') return -1
+          if (a.role !== 'admin' && b.role === 'admin') return 1
+          return a.username?.localeCompare(b.username ?? '') ?? 0
+        } else if (sortBy === 'dateJoined') {
+          return new Date((b as any).dateJoined || (b as any).created_at || 0).getTime() - new Date((a as any).dateJoined || (a as any).created_at || 0).getTime()
+        } else if (sortBy === 'username') {
+          return (a.username || a.name || '').localeCompare(b.username || b.name || '')
+        }
+        return 0
       })
-  }, [users, searchQuery, roleFilter])
+  }, [localUsers, searchQuery, roleFilter, statusFilter, sortBy])
 
   const openConfirmModal = (
     userId: string,
@@ -274,36 +398,37 @@ export function Admin({
     })
   }
 
-  const displayedLogs = activityLogs.slice(0, displayedLogsCount)
-  const hasMoreLogs = activityLogs.length > displayedLogsCount
-
   const refreshActivityLogs = async () => {
     setIsRefreshingLogs(true)
     try {
       const response = await adminApi.activityLogs()
-      setActivityLogs(response.data)
-      setDisplayedLogsCount(3) // Reset to showing first 3
+      const logsFromApi = Array.isArray(response.data) ? response.data : []
+      if (logsFromApi.length > 0) {
+        setActivityLogs(logsFromApi)
+      } else {
+        const generatedLogs = generateActivityLogs(localTransactions, localWallets, localBudgets, localUsers, localCategories)
+        setActivityLogs(generatedLogs)
+      }
     } catch (err) {
       console.error('Failed to refresh activity logs:', err)
+      const generatedLogs = generateActivityLogs(localTransactions, localWallets, localBudgets, localUsers, localCategories)
+      setActivityLogs(generatedLogs)
     } finally {
       setIsRefreshingLogs(false)
-    }
-  }
-
-  const handleLoadMoreLogs = async () => {
-    setIsLoadingMoreLogs(true)
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      setDisplayedLogsCount((prev) => prev + 3)
-    } finally {
-      setIsLoadingMoreLogs(false)
     }
   }
 
   const handleRoleChange = async () => {
     try {
       await adminApi.updateUserRole(confirmModal.userId, confirmModal.newRole)
-      const user = users.find((u) => u.id === confirmModal.userId)
+      const user = localUsers.find((u) => u.id === confirmModal.userId)
+      if (user) {
+        setLocalUsers((prev) =>
+          prev.map((u) =>
+            u.id === user.id ? { ...u, role: confirmModal.newRole } : u,
+          ),
+        )
+      }
       if (user && onEditUser) {
         onEditUser({ ...user, role: confirmModal.newRole })
       }
@@ -332,7 +457,14 @@ export function Admin({
   const handleStatusToggle = async (userId: string, newStatus: boolean) => {
     try {
       await adminApi.updateUserStatus(userId, newStatus)
-      const user = users.find((u) => u.id === userId)
+      const user = localUsers.find((u) => u.id === userId)
+      if (user) {
+        setLocalUsers((prev) =>
+          prev.map((u) =>
+            u.id === user.id ? { ...u, isActive: newStatus } : u,
+          ),
+        )
+      }
       if (user && onEditUser) {
         onEditUser({ ...user, isActive: newStatus })
       }
@@ -511,7 +643,7 @@ export function Admin({
           <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <ActivityIcon className="w-5 h-5 text-slate-400" />
-              <h2 className="text-lg font-semibold text-slate-900">Recent Activity</h2>
+              <h2 className="text-lg font-semibold text-slate-900">All User Activity</h2>
             </div>
             <button
               onClick={refreshActivityLogs}
@@ -522,8 +654,8 @@ export function Admin({
               <RefreshCwIcon className={`w-4 h-4 ${isRefreshingLogs ? 'animate-spin' : ''}`} />
             </button>
           </div>
-          <div className="divide-y divide-slate-100">
-            {displayedLogs.map((log, idx) => (
+          <div className="divide-y divide-slate-100 max-h-[340px] overflow-y-auto">
+            {activityLogs.map((log, idx) => (
               <motion.div
                 initial={{
                   opacity: 0,
@@ -553,21 +685,6 @@ export function Admin({
                 </div>
               </motion.div>
             ))}
-            {hasMoreLogs && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="px-6 py-4 text-center border-t border-slate-100"
-              >
-                <button
-                  onClick={handleLoadMoreLogs}
-                  disabled={isLoadingMoreLogs}
-                  className="text-sm font-medium text-amber-600 hover:text-amber-700 disabled:text-slate-400 transition-colors"
-                >
-                  {isLoadingMoreLogs ? 'Loading...' : `Load More (${activityLogs.length - displayedLogsCount} remaining)`}
-                </button>
-              </motion.div>
-            )}
           </div>
         </motion.div>
       </div>
@@ -605,16 +722,42 @@ export function Admin({
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
             />
           </div>
-          <div className="flex bg-slate-100 p-1 rounded-lg w-full sm:w-auto">
-            {(['all', 'admin', 'user'] as const).map((role) => (
-              <button
-                key={role}
-                onClick={() => setRoleFilter(role)}
-                className={`flex-1 sm:flex-none px-4 py-1.5 text-sm font-medium rounded-md capitalize transition-colors ${roleFilter === role ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+              {(['all', 'admin', 'user'] as const).map((role) => (
+                <button
+                  key={role}
+                  onClick={() => setRoleFilter(role)}
+                  className={`flex-1 sm:flex-none px-4 py-1.5 text-sm font-medium rounded-md capitalize transition-colors ${roleFilter === role ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {role}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               >
-                {role}
-              </button>
-            ))}
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Sort by:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'role' | 'dateJoined' | 'username')}
+                className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              >
+                <option value="role">Role</option>
+                <option value="dateJoined">Date Joined</option>
+                <option value="name">Name</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -627,6 +770,7 @@ export function Admin({
                   <th className="px-6 py-4 font-medium">User</th>
                   <th className="px-6 py-4 font-medium">Role</th>
                   <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium">Date Joined</th>
                   <th className="px-6 py-4 font-medium text-center">Wallets</th>
                   <th className="px-6 py-4 font-medium text-center">Transactions</th>
                   <th className="px-6 py-4 font-medium text-right">Balance</th>
@@ -682,8 +826,7 @@ export function Admin({
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <button
-                            onClick={() => handleStatusToggle(user.id, !user.isActive)}
+                          <button  
                             className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${user.isActive ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-50' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
                           >
                             <span
@@ -691,6 +834,16 @@ export function Admin({
                             ></span>
                             {user.isActive ? 'Active' : 'Inactive'}
                           </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">
+                          {(user.dateJoined || (user as any).created_at) ?
+                            new Date(user.dateJoined || (user as any).created_at).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            }) :
+                            '-'
+                          }
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span className="text-sm font-medium text-slate-700">
@@ -1040,3 +1193,5 @@ export function Admin({
     </motion.div>
   )
 }
+
+export default AdminPanel

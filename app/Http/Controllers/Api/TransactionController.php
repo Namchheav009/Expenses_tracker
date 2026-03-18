@@ -12,10 +12,13 @@ class TransactionController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $transactions = Transaction::where('user_id', $request->user()->id)
-            ->with(['wallet', 'category'])
-            ->orderByDesc('transaction_date')
-            ->get();
+        $query = Transaction::with(['wallet', 'category']);
+
+        if (!$request->user()->isAdmin()) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        $transactions = $query->orderByDesc('transaction_date')->get();
         return response()->json($transactions);
     }
 

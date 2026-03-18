@@ -6,7 +6,7 @@ import { Wallets } from './Wallets'
 import { Categories } from './Categories'
 import { Budgets } from './Budgets'
 import { AIAnalysis } from './AIAnalysis'
-import { Admin } from './AdminPanel'
+import AdminPanel from './AdminPanel'
 import { Users } from './Users'
 import AuthPage from './Auth/AuthPage'
 import {
@@ -129,12 +129,17 @@ export default function Home() {
 
         const currentUser = {
           id: String(userRes.data.id),
-          name: userRes.data.name,
+          name:
+            userRes.data.name ||
+            userRes.data.username ||
+            userRes.data.email?.split('@')[0] ||
+            'You',
           email: userRes.data.email,
           role: userRes.data.role ?? 'user',
         }
 
         setUser(currentUser)
+        setUsers([currentUser])
         setIsAuthenticated(true)
 
         // If admin, default to admin panel unless user already selected a different page.
@@ -167,7 +172,17 @@ export default function Home() {
         if (currentUser.role === 'admin') {
           try {
             const usersRes = await adminApi.users()
-            setUsers(usersRes.data?.data ?? usersRes.data ?? [])
+            const normalizedUsers = (usersRes.data?.data || usersRes.data || []).map((u: any) => ({
+              ...u,
+              id: String(u.id),
+              username: u.name || u.email?.split('@')[0] || '',
+              name: u.name || u.email?.split('@')[0] || '',
+              email: u.email,
+              role: u.role || 'user',
+              isActive: u.is_active !== undefined ? Boolean(u.is_active) : true,
+              dateJoined: u.created_at || new Date().toISOString(),
+            }))
+            setUsers(normalizedUsers)
           } catch (err) {
             console.error('Failed to load users for admin:', err)
           }
@@ -386,9 +401,24 @@ export default function Home() {
 
   const handleAddWallet = async (wallet: Omit<Wallet, 'id'>) => {
     try {
-      const response = await walletsApi.store(wallet)
-      const newWallet = response.data
-      setWallets((prev) => [...prev, newWallet])
+      if (user?.role === 'admin') {
+        const response = await adminApi.createWallet({
+          user_id: wallet.userId,
+          name: wallet.name,
+          balance: wallet.balance,
+          currency: 'USD',
+        })
+        const rawWallet = response.data?.data || response.data
+        const newWallet = normalizeWallet(rawWallet)
+        setWallets((prev) => [...prev, newWallet])
+      } else {
+        const response = await walletsApi.store({
+          ...wallet,
+          currency: 'USD',
+        })
+        const newWallet = normalizeWallet(response.data)
+        setWallets((prev) => [...prev, newWallet])
+      }
     } catch (err) {
       console.error('Error adding wallet:', err)
       setError('Failed to add wallet')
@@ -397,9 +427,24 @@ export default function Home() {
 
   const handleUpdateWallet = async (id: string, wallet: Omit<Wallet, 'id'>) => {
     try {
-      const response = await walletsApi.update(id, wallet)
-      const updatedWallet = response.data
-      setWallets((prev) => prev.map((w) => w.id === id ? updatedWallet : w))
+      if (user?.role === 'admin') {
+        const response = await adminApi.updateWallet(id, {
+          user_id: wallet.userId,
+          name: wallet.name,
+          balance: wallet.balance,
+          currency: 'USD',
+        })
+        const rawWallet = response.data?.data || response.data
+        const updatedWallet = normalizeWallet(rawWallet)
+        setWallets((prev) => prev.map((w) => (w.id === id ? updatedWallet : w)))
+      } else {
+        const response = await walletsApi.update(id, {
+          ...wallet,
+          currency: 'USD',
+        })
+        const updatedWallet = normalizeWallet(response.data)
+        setWallets((prev) => prev.map((w) => (w.id === id ? updatedWallet : w)))
+      }
     } catch (err) {
       console.error('Error updating wallet:', err)
       setError('Failed to update wallet')
@@ -408,7 +453,11 @@ export default function Home() {
 
   const handleDeleteWallet = async (id: string) => {
     try {
-      await walletsApi.destroy(id)
+      if (user?.role === 'admin') {
+        await adminApi.deleteWallet(id)
+      } else {
+        await walletsApi.destroy(id)
+      }
       setWallets((prev) => prev.filter((w) => w.id !== id))
     } catch (err) {
       console.error('Error deleting wallet:', err)
@@ -418,8 +467,20 @@ export default function Home() {
 
   const handleAddCategory = async (category: Omit<Category, 'id'>) => {
     try {
-      const response = await categoriesApi.store(category)
-      const newCategory = response.data
+      const payload = user?.role === 'admin'
+        ? {
+            user_id: category.userId,
+            name: category.name,
+            type: category.type,
+          }
+        : {
+            name: category.name,
+            type: category.type,
+          }
+
+      const response = await categoriesApi.store(payload)
+      const rawCategory = response.data
+      const newCategory = normalizeCategory(rawCategory)
       setCategories((prev) => [...prev, newCategory])
     } catch (err) {
       console.error('Error adding category:', err)
@@ -429,8 +490,20 @@ export default function Home() {
 
   const handleUpdateCategory = async (id: string, category: Omit<Category, 'id'>) => {
     try {
-      const response = await categoriesApi.update(id, category)
-      const updatedCategory = response.data
+      const payload = user?.role === 'admin'
+        ? {
+            user_id: category.userId,
+            name: category.name,
+            type: category.type,
+          }
+        : {
+            name: category.name,
+            type: category.type,
+          }
+
+      const response = await categoriesApi.update(id, payload)
+      const rawCategory = response.data
+      const updatedCategory = normalizeCategory(rawCategory)
       setCategories((prev) => prev.map((c) => c.id === id ? updatedCategory : c))
     } catch (err) {
       console.error('Error updating category:', err)
@@ -455,6 +528,7 @@ export default function Home() {
         amount: budget.limitAmount,
         month: budget.month,
         year: budget.year,
+        ...(budget.userId ? { user_id: budget.userId } : {}),
       }
       const response = await budgetsApi.store(apiBudget)
       const newBudget = normalizeBudget(response.data)
@@ -472,6 +546,7 @@ export default function Home() {
         amount: budget.limitAmount,
         month: budget.month,
         year: budget.year,
+        ...(budget.userId ? { user_id: budget.userId } : {}),
       }
       const response = await budgetsApi.update(id, apiBudget)
       const updatedBudget = normalizeBudget(response.data)
@@ -596,7 +671,7 @@ export default function Home() {
           />
         )
       case 'wallets':
-        return <Wallets wallets={wallets} onAddWallet={handleAddWallet} onUpdateWallet={handleUpdateWallet} onDeleteWallet={handleDeleteWallet} />
+        return <Wallets wallets={wallets} onAddWallet={handleAddWallet} onUpdateWallet={handleUpdateWallet} onDeleteWallet={handleDeleteWallet} isAdmin={user?.role === 'admin'} users={users} currentUserId={user?.id ?? ''} />
       case 'categories':
         return (
           <Categories
@@ -604,6 +679,9 @@ export default function Home() {
             onAddCategory={handleAddCategory}
             onUpdateCategory={handleUpdateCategory}
             onDeleteCategory={handleDeleteCategory}
+            isAdmin={user?.role === 'admin'}
+            users={users}
+            currentUserId={user?.id ?? ''}
           />
         )
       case 'budgets':
@@ -615,6 +693,9 @@ export default function Home() {
             onAddBudget={handleAddBudget}
             onUpdateBudget={handleUpdateBudget}
             onDeleteBudget={handleDeleteBudget}
+            isAdmin={user?.role === 'admin'}
+            users={users}
+            currentUserId={user?.id ?? ''}
           />
         )
       case 'ai-analysis':
@@ -623,7 +704,7 @@ export default function Home() {
         )
       case 'admin':
         return user?.role === 'admin' ? (
-          <Admin
+          <AdminPanel
             users={users}
             transactions={transactions}
             wallets={wallets}

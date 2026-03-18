@@ -8,9 +8,11 @@ import {
   Edit2Icon,
   Trash2Icon,
 } from 'lucide-react'
-import type { Budget, Category, Transaction } from '../data/mockData'
+import type { Budget, Category, Transaction, User } from '../data/mockData'
 import { Modal } from '../Components/Modal'
 import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
+import React from 'react'
+
 interface BudgetsProps {
   budgets: Budget[]
   categories: Category[]
@@ -18,7 +20,11 @@ interface BudgetsProps {
   onAddBudget: (budget: Omit<Budget, 'id'>) => void
   onUpdateBudget: (id: string, budget: Omit<Budget, 'id'>) => void
   onDeleteBudget: (id: string) => void
+  isAdmin?: boolean
+  users?: User[]
+  currentUserId?: string
 }
+
 export function Budgets({
   budgets,
   categories,
@@ -26,6 +32,9 @@ export function Budgets({
   onAddBudget,
   onUpdateBudget,
   onDeleteBudget,
+  isAdmin = false,
+  users = [],
+  currentUserId = '',
 }: BudgetsProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1)
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
@@ -33,6 +42,8 @@ export function Budgets({
   const [formCategory, setFormCategory] = useState('')
   const [formLimit, setFormLimit] = useState('')
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
+  const [filterUser, setFilterUser] = useState<string>('all')
+  const [selectedUserId, setSelectedUserId] = useState<string>(currentUserId)
   const monthNames = [
     'January',
     'February',
@@ -47,6 +58,24 @@ export function Budgets({
     'November',
     'December',
   ]
+
+  const getUserName = (userId: string) => {
+    const user = users.find((u) => u.id === userId)
+    return user?.username || user?.name || userId
+  }
+
+  const userIdsInBudgets = isAdmin
+    ? [...new Set(budgets.map((b) => b.userId))]
+    : []
+
+  // Ensure admin has a valid selected user when opening the add UI
+  React.useEffect(() => {
+    if (isAdmin) {
+      setSelectedUserId(users[0]?.id ?? currentUserId)
+    } else {
+      setSelectedUserId(currentUserId)
+    }
+  }, [isAdmin, users, currentUserId])
   const handlePrevMonth = () => {
     if (currentMonth === 1) {
       setCurrentMonth(12)
@@ -63,14 +92,22 @@ export function Budgets({
       setCurrentMonth((m) => m + 1)
     }
   }
-  const currentBudgets = budgets.filter(
-    (b) => b.month === currentMonth && b.year === currentYear,
+  const currentBudgets = budgets
+    .filter((b) => b.month === currentMonth && b.year === currentYear)
+    .filter((b) =>
+      isAdmin
+        ? filterUser === 'all' || b.userId === filterUser
+        : b.userId === currentUserId,
+    )
+  const expenseCategories = categories.filter((c) => 
+    c.type === 'expense' && 
+    (isAdmin ? c.userId === selectedUserId : c.userId === currentUserId)
   )
-  const expenseCategories = categories.filter((c) => c.type === 'expense')
   const resetForm = () => {
     setEditingBudget(null)
     setFormCategory('')
     setFormLimit('')
+    setSelectedUserId(isAdmin ? users[0]?.id ?? currentUserId : currentUserId)
   }
 
   const handleDeleteBudget = async (id: string) => {
@@ -79,17 +116,29 @@ export function Budgets({
 
     onDeleteBudget(id)
     showDeletedToast('Deleted!', 'Your budget has been deleted.')
+    window.dispatchEvent(new CustomEvent('admin:data-changed'))
   }
 
   const handleAddSubmit = () => {
     if (!formCategory || !formLimit) return
-    const budgetData = {
-      userId: 'user_123',
+
+    const baseBudgetData = {
       categoryId: formCategory,
       limitAmount: parseFloat(formLimit),
       month: currentMonth,
       year: currentYear,
     }
+
+    const budgetData = isAdmin
+      ? {
+          ...baseBudgetData,
+          userId: selectedUserId || currentUserId,
+        }
+      : {
+          ...baseBudgetData,
+          userId: currentUserId,
+        }
+
     if (editingBudget) {
       onUpdateBudget(editingBudget.id, budgetData)
       showSavedToast('Budget updated')
@@ -97,6 +146,7 @@ export function Budgets({
       onAddBudget(budgetData)
       showSavedToast('Budget added')
     }
+    window.dispatchEvent(new CustomEvent('admin:data-changed'))
     setIsModalOpen(false)
     resetForm()
   }
@@ -112,18 +162,51 @@ export function Budgets({
     >
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Monthly Budgets</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isAdmin ? 'All Budgets' : 'Monthly Budgets'}
+          </h1>
           <p className="text-slate-500 mt-1">
-            Set limits and track your spending.
+            {isAdmin
+              ? "View all users' budget limits and spending."
+              : 'Set limits and track your spending.'}
           </p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors shadow-sm"
-        >
-          <PlusIcon className="w-5 h-5" />
-          Add Budget
-        </button>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <>
+              <select
+                value={filterUser}
+                onChange={(e) => setFilterUser(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent bg-white"
+              >
+                <option value="all">All Users</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username || u.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent bg-white"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username || u.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium transition-colors shadow-sm"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Add Budget
+          </button>
+        </div>
       </div>
 
       {/* Month Selector */}
@@ -149,17 +232,21 @@ export function Budgets({
         <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 border-dashed">
           <TargetIcon className="w-12 h-12 text-slate-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-slate-900 mb-1">
-            No budgets set
+            No budgets found
           </h3>
           <p className="text-slate-500 mb-4">
-            You haven't set any budgets for this month yet.
+            {isAdmin
+              ? 'No users have budgets set for this month.'
+              : "You haven't set any budgets for this month yet."}
           </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="text-emerald-600 font-medium hover:text-emerald-700"
-          >
-            Create your first budget
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="text-emerald-600 font-medium hover:text-emerald-700"
+            >
+              Create your first budget
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -171,6 +258,7 @@ export function Budgets({
                 const d = new Date(t.date)
                 return (
                   t.categoryId === budget.categoryId &&
+                  t.userId === budget.userId &&
                   t.transactionType === 'expense' &&
                   d.getMonth() + 1 === currentMonth &&
                   d.getFullYear() === currentYear
@@ -212,28 +300,47 @@ export function Budgets({
                     <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
                       <TargetIcon className="w-5 h-5 text-slate-600" />
                     </div>
-                    <h3 className="font-semibold text-slate-900">
-                      {category?.name}
-                    </h3>
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        {category?.name}
+                      </h3>
+                      {isAdmin && (
+                        <span className="text-xs text-slate-400">
+                          {getUserName(budget.userId)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        setEditingBudget(budget)
-                        setFormCategory(budget.categoryId)
-                        setFormLimit(budget.limitAmount.toString())
-                        setIsModalOpen(true)
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-sm font-medium px-2.5 py-1 rounded-full bg-slate-50 ${textColorClass}`}
                     >
-                      <Edit2Icon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteBudget(budget.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                    >
-                      <Trash2Icon className="w-4 h-4" />
-                    </button>
+                      {percent.toFixed(0)}% Used
+                    </span>
+                    {(isAdmin || budget.userId === currentUserId) && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingBudget(budget)
+                            setFormCategory(budget.categoryId)
+                            setFormLimit(budget.limitAmount.toString())
+                            if (isAdmin) {
+                              setSelectedUserId(budget.userId)
+                            }
+                            setIsModalOpen(true)
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                        >
+                          <Edit2Icon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBudget(budget.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                        >
+                          <Trash2Icon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -273,7 +380,9 @@ export function Budgets({
                   <p className="text-sm text-slate-500">
                     {remaining >= 0 ? (
                       <>
-                        You have{' '}
+                        {isAdmin
+                          ? getUserName(budget.userId) + ' has'
+                          : 'You have'}{' '}
                         <span className={`font-semibold ${textColorClass}`}>
                           ${remaining.toFixed(2)}
                         </span>{' '}
@@ -281,7 +390,9 @@ export function Budgets({
                       </>
                     ) : (
                       <>
-                        You are{' '}
+                        {isAdmin
+                          ? getUserName(budget.userId) + ' is'
+                          : 'You are'}{' '}
                         <span className="font-semibold text-rose-600">
                           ${Math.abs(remaining).toFixed(2)}
                         </span>{' '}
@@ -326,6 +437,24 @@ export function Budgets({
         }
       >
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleAddSubmit(); }}>
+          {isAdmin && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                User
+              </label>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent bg-white"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username || u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Category

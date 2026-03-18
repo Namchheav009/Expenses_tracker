@@ -11,7 +11,13 @@ class WalletController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $wallets = Wallet::where('user_id', $request->user()->id)->get();
+        $query = Wallet::query();
+
+        if (!$request->user()->isAdmin()) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        $wallets = $query->get();
         return response()->json($wallets);
     }
 
@@ -22,6 +28,11 @@ class WalletController extends Controller
             'balance' => 'required|numeric|min:0',
             'currency' => 'nullable|string|max:3',
         ]);
+
+        // Ensure we never insert a NULL currency (the DB column is not nullable and defaults to USD)
+        if (array_key_exists('currency', $validated) && $validated['currency'] === null) {
+            unset($validated['currency']);
+        }
 
         $wallet = Wallet::create([
             ...$validated,
@@ -46,6 +57,11 @@ class WalletController extends Controller
             'balance' => 'numeric|min:0',
             'currency' => 'nullable|string|max:3',
         ]);
+
+        // Do not set currency to NULL; use database default when no value is provided.
+        if (array_key_exists('currency', $validated) && $validated['currency'] === null) {
+            unset($validated['currency']);
+        }
 
         $wallet->update($validated);
         return response()->json($wallet);

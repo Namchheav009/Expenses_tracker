@@ -11,7 +11,13 @@ class CategoryController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $categories = Category::where('user_id', $request->user()->id)->get();
+        $query = Category::query();
+
+        if (!$request->user()->isAdmin()) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        $categories = $query->get();
         return response()->json($categories);
     }
 
@@ -22,11 +28,17 @@ class CategoryController extends Controller
             'icon' => 'nullable|string',
             'color' => 'nullable|string',
             'type' => 'required|in:income,expense',
+            'user_id' => 'sometimes|exists:users,id',
         ]);
+
+        $userId = $request->user()->id;
+        if ($request->user()->isAdmin() && isset($validated['user_id'])) {
+            $userId = $validated['user_id'];
+        }
 
         $category = Category::create([
             ...$validated,
-            'user_id' => $request->user()->id,
+            'user_id' => $userId,
         ]);
 
         return response()->json($category, 201);
@@ -47,7 +59,12 @@ class CategoryController extends Controller
             'icon' => 'nullable|string',
             'color' => 'nullable|string',
             'type' => 'in:income,expense',
+            'user_id' => 'sometimes|exists:users,id',
         ]);
+
+        if ($request->user()->isAdmin() && isset($validated['user_id'])) {
+            $category->user_id = $validated['user_id'];
+        }
 
         $category->update($validated);
         return response()->json($category);

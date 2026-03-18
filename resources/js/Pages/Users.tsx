@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   PlusIcon,
@@ -50,6 +50,7 @@ export function Users() {
   const [formUsername, setFormUsername] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formPassword, setFormPassword] = useState('')
+  const [formRole, setFormRole] = useState<'admin' | 'user'>('user')
   const [formIsActive, setFormIsActive] = useState(true)
   const [showFormPassword, setShowFormPassword] = useState(false)
 
@@ -61,6 +62,7 @@ export function Users() {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [passwordError, setPasswordError] = useState('')
+  const newPasswordRef = useRef<HTMLInputElement | null>(null)
 
   // Password visibility per row
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set())
@@ -119,9 +121,10 @@ export function Users() {
         name: u.name || u.email.split('@')[0],
         email: u.email,
         role: u.role || 'user',
-        isActive: true,
+        isActive: u.is_active !== undefined ? Boolean(u.is_active) : true,
         dateJoined: u.created_at || new Date().toISOString(),
-        password: '••••••••',
+        // Password is not retrievable from the backend; keep it blank.
+        password: '',
       }))
       setUsers(apiUsers)
     } catch (err: any) {
@@ -151,6 +154,7 @@ export function Users() {
     setFormUsername('')
     setFormEmail('')
     setFormPassword('')
+    setFormRole('user')
     setFormIsActive(true)
     setShowFormPassword(false)
     setIsModalOpen(true)
@@ -160,13 +164,21 @@ export function Users() {
     setEditingUserId(user.id)
     setFormUsername(user.username)
     setFormEmail(user.email)
-    setFormPassword(user.password)
+    // Passwords are not retrievable from the backend for security reasons.
+    // Leave this blank and only send a password when the admin wants to change it.
+    setFormPassword('')
+    setFormRole(user.role || 'user')
     setFormIsActive(user.isActive)
     setShowFormPassword(false)
     setIsModalOpen(true)
   }
 
   const openPasswordModal = (user: User) => {
+    // Prevent any focused input (e.g. search) from keeping focus or triggering autofill
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+
     setPasswordChangeUserId(user.id)
     setNewPassword('')
     setConfirmPassword('')
@@ -174,6 +186,9 @@ export function Users() {
     setShowConfirmPassword(false)
     setPasswordError('')
     setIsPasswordModalOpen(true)
+
+    // Ensure modal password field receives focus once it renders
+    setTimeout(() => newPasswordRef.current?.focus(), 50)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -182,19 +197,38 @@ export function Users() {
 
     try {
       if (editingUserId) {
-        await adminApi.updateUser(editingUserId, {
+        const payload: any = {
           name: formUsername,
           email: formEmail,
-          password: formPassword,
-        })
+          role: formRole,
+          is_active: formIsActive,
+        }
+        if (formPassword) {
+          payload.password = formPassword
+        }
+        await adminApi.updateUser(editingUserId, payload)
         showSavedToast('User updated')
+        window.dispatchEvent(new CustomEvent('admin:data-changed'))
       } else {
-        await adminApi.createUser({
+        const response = await adminApi.createUser({
           name: formUsername,
           email: formEmail,
           password: formPassword,
+          role: formRole,
+          is_active: formIsActive,
         })
         showSavedToast('User created')
+        window.dispatchEvent(new CustomEvent('admin:data-changed'))
+
+        // Keep the new password visible after creation (in this session)
+        const createdUser = response.data?.data
+        if (createdUser) {
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === createdUser.id ? { ...u, password: formPassword } : u,
+            ),
+          )
+        }
       }
       setIsModalOpen(false)
       await refreshUsers()
@@ -221,6 +255,14 @@ export function Users() {
         await adminApi.updateUserPassword(passwordChangeUserId, newPassword)
         showSavedToast('Password updated')
         setIsPasswordModalOpen(false)
+
+        // Keep the new password visible in the UI after change (for this session only)
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === passwordChangeUserId ? { ...u, password: newPassword } : u,
+          ),
+        )
+
         await refreshUsers()
       } catch (err: any) {
         setPasswordError(err?.response?.data?.message || 'Failed to update password')
@@ -235,6 +277,7 @@ export function Users() {
     try {
       await adminApi.deleteUser(id)
       showDeletedToast('Deleted!', 'User has been deleted.')
+      window.dispatchEvent(new CustomEvent('admin:data-changed'))
       await refreshUsers()
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to delete user')
@@ -309,6 +352,7 @@ export function Users() {
             placeholder="Search users by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            autoComplete="off"
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
           />
         </div>
@@ -343,7 +387,8 @@ export function Users() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">
                 <th className="px-6 py-4 font-medium">User</th>
-                <th className="px-6 py-4 font-medium">Password</th>
+                <th className="px-6 py-4 font-medium">Role</th>
+
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium">Date Joined</th>
                 <th className="px-6 py-4 font-medium text-center">Actions</th>
@@ -398,24 +443,15 @@ export function Users() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <code className="text-sm font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md text-slate-700 select-all">
-                            {isPasswordVisible ? user.password : '••••••••••'}
-                          </code>
-                          <button
-                            onClick={() => togglePasswordVisibility(user.id)}
-                            className="p-1 text-slate-400 hover:text-slate-600 rounded transition-colors"
-                            title={
-                              isPasswordVisible ? 'Hide password' : 'Show password'
-                            }
-                          >
-                            {isPasswordVisible ? (
-                              <EyeOffIcon className="w-4 h-4" />
-                            ) : (
-                              <EyeIcon className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                            user.role === 'admin'
+                              ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                              : 'bg-blue-100 text-blue-700 border border-blue-200'
+                          }`}
+                        >
+                          {user.role === 'admin' ? 'Admin' : 'User'}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -443,6 +479,7 @@ export function Users() {
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
+                            type="button"
                             onClick={() => openPasswordModal(user)}
                             className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
                             title="Change Password"
@@ -450,6 +487,7 @@ export function Users() {
                             <KeyRoundIcon className="w-4 h-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => openEditModal(user)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                             title="Edit User"
@@ -457,6 +495,7 @@ export function Users() {
                             <Edit2Icon className="w-4 h-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteUser(user.id)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                             title="Delete User"
@@ -534,7 +573,11 @@ export function Users() {
                 type={showFormPassword ? 'text' : 'password'}
                 value={formPassword}
                 onChange={(e) => setFormPassword(e.target.value)}
-                placeholder={editingUserId ? 'Current password' : 'Set a password'}
+                placeholder={
+                  editingUserId
+                    ? 'Leave blank to keep existing password'
+                    : 'Set a password'
+                }
                 required={!editingUserId}
                 className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               />
@@ -550,6 +593,20 @@ export function Users() {
                 )}
               </button>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Role
+            </label>
+            <select
+              value={formRole}
+              onChange={(e) => setFormRole(e.target.value as 'admin' | 'user')}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
           </div>
 
           <div className="pt-2">
@@ -627,7 +684,7 @@ export function Users() {
             <div className="relative">
               <input
                 type="text"
-                value={passwordChangeUser?.password || ''}
+                value="••••••••••"
                 readOnly
                 className="w-full px-3 py-2 pr-10 border border-slate-200 rounded-lg bg-slate-50 text-slate-600 font-mono text-sm cursor-default"
               />
@@ -643,6 +700,7 @@ export function Users() {
             </label>
             <div className="relative">
               <input
+                ref={newPasswordRef}
                 type={showNewPassword ? 'text' : 'password'}
                 value={newPassword}
                 onChange={(e) => {

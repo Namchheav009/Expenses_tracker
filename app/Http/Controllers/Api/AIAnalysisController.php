@@ -11,9 +11,13 @@ class AIAnalysisController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $analyses = AIAnalysis::where('user_id', $request->user()->id)
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $query = AIAnalysis::query();
+
+        if (!$request->user()->isAdmin()) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        $analyses = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json($analyses);
     }
