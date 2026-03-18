@@ -186,17 +186,7 @@ export function Budgets({
                   </option>
                 ))}
               </select>
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent bg-white"
-              >
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.username || u.name}
-                  </option>
-                ))}
-              </select>
+              
             </>
           )}
           <button
