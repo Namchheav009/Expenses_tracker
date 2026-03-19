@@ -273,6 +273,33 @@ export default function Home() {
 
   const handleAddTransaction = async (txn: Omit<Transaction, 'id' | 'createdAt'>) => {
     try {
+      // Handle transfer transactions specially - store them locally without API validation
+      if (txn.categoryId === 'transfer') {
+        const newTxn: Transaction = {
+          id: `transfer-${Date.now()}`,
+          ...txn,
+          createdAt: new Date().toISOString(),
+        }
+        setTransactions((prev) => [newTxn, ...prev])
+        
+        // Update wallet balance for transfers
+        setWallets((prev) =>
+          prev.map((w) => {
+            if (w.id.toString() === txn.walletId.toString()) {
+              return {
+                ...w,
+                balance:
+                  txn.transactionType === 'income'
+                    ? w.balance + txn.amount
+                    : w.balance - txn.amount,
+              }
+            }
+            return w
+          }),
+        )
+        return
+      }
+
       // Transform to API expected format (snake_case)
       const apiTxn = {
         wallet_id: txn.walletId,
@@ -671,7 +698,7 @@ export default function Home() {
           />
         )
       case 'wallets':
-        return <Wallets wallets={wallets} onAddWallet={handleAddWallet} onUpdateWallet={handleUpdateWallet} onDeleteWallet={handleDeleteWallet} isAdmin={user?.role === 'admin'} users={users} currentUserId={user?.id ?? ''} />
+        return <Wallets wallets={wallets} onAddWallet={handleAddWallet} onUpdateWallet={handleUpdateWallet} onDeleteWallet={handleDeleteWallet} onAddTransaction={handleAddTransaction} isAdmin={user?.role === 'admin'} users={users} currentUserId={user?.id ?? ''} />
       case 'categories':
         return (
           <Categories

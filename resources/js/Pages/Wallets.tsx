@@ -8,8 +8,9 @@ import {
   MoreVerticalIcon,
   Edit2Icon,
   Trash2Icon,
+  ArrowRightIcon,
 } from 'lucide-react'
-import type { Wallet, User } from '../data/mockData'
+import type { Wallet, User, Transaction } from '../data/mockData'
 import { Modal } from '../Components/Modal'
 import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
 import React from 'react'
@@ -19,6 +20,7 @@ interface WalletsProps {
   onAddWallet: (wallet: Omit<Wallet, 'id'>) => void
   onUpdateWallet: (id: string, wallet: Omit<Wallet, 'id'>) => void
   onDeleteWallet: (id: string) => void
+  onAddTransaction?: (txn: Omit<Transaction, 'id' | 'createdAt'>) => void
   isAdmin?: boolean
   users?: User[]
   currentUserId?: string
@@ -29,6 +31,7 @@ export function Wallets({
   onAddWallet,
   onUpdateWallet,
   onDeleteWallet,
+  onAddTransaction,
   isAdmin = false,
   users = [],
   currentUserId = '',
@@ -38,6 +41,11 @@ export function Wallets({
   const [balance, setBalance] = useState('')
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null)
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUserId)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
+  const [transferFromWallet, setTransferFromWallet] = useState<Wallet | null>(null)
+  const [transferToWalletId, setTransferToWalletId] = useState('')
+  const [transferAmount, setTransferAmount] = useState('')
+  const [transferError, setTransferError] = useState('')
 
   // Ensure admin starts with a valid user selected
   useEffect(() => {
@@ -102,6 +110,108 @@ export function Wallets({
     onDeleteWallet(id)
     showDeletedToast('Deleted!', 'Your wallet has been deleted.')
     window.dispatchEvent(new CustomEvent('admin:data-changed'))
+  }
+
+  const resetTransferForm = () => {
+    setTransferFromWallet(null)
+    setTransferToWalletId('')
+    setTransferAmount('')
+    setTransferError('')
+  }
+
+  const openTransferModal = (wallet: Wallet) => {
+    setTransferFromWallet(wallet)
+    setTransferToWalletId('')
+    setTransferAmount('')
+    setTransferError('')
+    setIsTransferModalOpen(true)
+  }
+
+  const handleTransferSubmit = async () => {
+    if (!transferFromWallet || !transferToWalletId || !transferAmount) {
+      setTransferError('Please fill in all fields.')
+      return
+    }
+
+    const amount = parseFloat(transferAmount)
+    if (amount <= 0) {
+      setTransferError('Transfer amount must be greater than 0.')
+      return
+    }
+
+    if (amount > transferFromWallet.balance) {
+      setTransferError('Insufficient balance in the source wallet.')
+      return
+    }
+
+    const toWallet = wallets.find((w) => w.id === transferToWalletId)
+    if (!toWallet) {
+      setTransferError('Invalid destination wallet.')
+      return
+    }
+
+    if (transferFromWallet.id === transferToWalletId) {
+      setTransferError('Cannot transfer to the same wallet.')
+      return
+    }
+
+    try {
+      // Update source wallet (decrease balance)
+      const fromWalletData = {
+        userId: transferFromWallet.userId,
+        name: transferFromWallet.name,
+        balance: transferFromWallet.balance - amount,
+      }
+      await onUpdateWallet(transferFromWallet.id, fromWalletData)
+
+      // Update destination wallet (increase balance)
+      const toWalletData = {
+        userId: toWallet.userId,
+        name: toWallet.name,
+        balance: toWallet.balance + amount,
+      }
+      await onUpdateWallet(transferToWalletId, toWalletData)
+
+      // Create transaction records for the transfer
+      if (onAddTransaction) {
+        const today = new Date().toISOString().split('T')[0]
+        
+        // Create expense transaction for source wallet
+        onAddTransaction({
+          userId: transferFromWallet.userId,
+          walletId: transferFromWallet.id,
+          categoryId: 'transfer',
+          amount,
+          transactionType: 'expense',
+          date: today,
+          title: `Transfer to ${toWallet.name}`,
+          note: `Transferred from ${transferFromWallet.name} to ${toWallet.name}`,
+        })
+
+        // Create income transaction for destination wallet
+        onAddTransaction({
+          userId: toWallet.userId,
+          walletId: toWallet.id,
+          categoryId: 'transfer',
+          amount,
+          transactionType: 'income',
+          date: today,
+          title: `Transfer from ${transferFromWallet.name}`,
+          note: `Transferred from ${transferFromWallet.name} to ${toWallet.name}`,
+        })
+      }
+
+      showSavedToast(
+        'Transfer successful!',
+        `$${amount.toFixed(2)} transferred from ${transferFromWallet.name} to ${toWallet.name}`,
+      )
+      window.dispatchEvent(new CustomEvent('admin:data-changed'))
+      setIsTransferModalOpen(false)
+      resetTransferForm()
+    } catch (err) {
+      console.error('Error transferring money:', err)
+      setTransferError('Failed to process transfer. Please try again.')
+    }
   }
 
   const handleAddSubmit = async () => {
@@ -208,11 +318,18 @@ export function Wallets({
                           className={`absolute top-0 left-0 right-0 h-1.5 ${topColor}`}
                         />
                         <div className="p-6">
-                          <div className="flex justify-between items-start mb-6">
+                            <div className="flex justify-between items-start mb-6">
                             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
                               <Icon className="w-6 h-6 text-slate-700" />
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => openTransferModal(wallet)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                                title="Transfer Money"
+                              >
+                                <ArrowRightIcon className="w-4 h-4" />
+                              </button>
                               <button
                                 onClick={() => {
                                   setEditingWallet(wallet)
@@ -284,6 +401,13 @@ export function Wallets({
                       <Icon className="w-6 h-6 text-slate-700" />
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => openTransferModal(wallet)}
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                        title="Transfer Money"
+                      >
+                        <ArrowRightIcon className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => {
                           setEditingWallet(wallet)
@@ -396,6 +520,113 @@ export function Wallets({
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent"
             />
           </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={isTransferModalOpen}
+        onClose={() => {
+          setIsTransferModalOpen(false)
+          resetTransferForm()
+        }}
+        title="Transfer Money"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setIsTransferModalOpen(false)
+                resetTransferForm()
+              }}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleTransferSubmit}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Transfer
+            </button>
+          </div>
+        }
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleTransferSubmit()
+          }}
+        >
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              From Wallet
+            </label>
+            <div className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-600">
+              {transferFromWallet ? (
+                <span className="font-medium">{transferFromWallet.name}</span>
+              ) : (
+                <span className="text-slate-400">Select a wallet</span>
+              )}
+            </div>
+            {transferFromWallet && (
+              <p className="text-xs text-slate-500 mt-1">
+                Available: $
+                {transferFromWallet.balance.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              To Wallet
+            </label>
+            <select
+              value={transferToWalletId}
+              onChange={(e) => setTransferToWalletId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+            >
+              <option value="">Select destination wallet</option>
+              {wallets
+                .filter(
+                  (w) =>
+                    w.id !== transferFromWallet?.id &&
+                    (isAdmin || w.userId === currentUserId),
+                )
+                .map((wallet) => (
+                  <option key={wallet.id} value={wallet.id}>
+                    {wallet.name} ($
+                    {wallet.balance.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })})
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Amount ($)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={transferAmount}
+              onChange={(e) => setTransferAmount(e.target.value)}
+              placeholder="0.00"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+          </div>
+
+          {transferError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
+              {transferError}
+            </div>
+          )}
         </form>
       </Modal>
     </motion.div>

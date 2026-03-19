@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\Password;
 
@@ -49,13 +50,35 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'email' => [
+                'required',
+                'email:rfc,dns',
+                'regex:/^[a-zA-Z0-9._%+-]+@(gmail\.com|outlook\.com|hotmail\.com|live\.com)$/i',
+                'unique:users,email',
+            ],
             'password' => ['required', 'confirmed', Password::min(8)],
+            'g-recaptcha-response' => 'required',
+        ], [
+            'email.regex' => 'Please use a Gmail or Microsoft email address.',
+            'email.unique' => 'This email is already registered.',
         ]);
+
+        // Verify captcha
+        $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+            'secret' => env('RECAPTCHA_SECRET_KEY'),
+            'response' => $validated['g-recaptcha-response'],
+            'remoteip' => $request->ip(),
+        ]);
+
+        if (!$response->json('success')) {
+            throw ValidationException::withMessages([
+                'captcha' => ['Captcha verification failed. Please try again.'],
+            ]);
+        }
 
         $user = User::create([
             'name' => $validated['name'],
-            'email' => $validated['email'],
+            'email' => strtolower($validated['email']),
             'password' => bcrypt($validated['password']),
             'role' => 'user',
         ]);

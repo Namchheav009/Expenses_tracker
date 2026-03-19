@@ -94,10 +94,34 @@ export default function Login({
     } catch (err: any) {
       console.error('Login error', err)
       const response = err?.response
+      
+      // Handle specific error scenarios
       if (response?.data?.errors) {
-        setError(response.data.errors.email || response.data.errors.password || response.data.errors.general || 'Login failed.')
+        const errors = response.data.errors
+        
+        // Check for specific validation errors
+        if (errors.email) {
+          setError('Email address not found. Please check and try again, or sign up.')
+        } else if (errors.password) {
+          setError('Password is incorrect. Please try again.')
+        } else if (errors.general) {
+          setError(errors.general)
+        } else {
+          setError('Login failed. Please try again.')
+        }
       } else if (response?.data?.message) {
-        setError(response.data.message)
+        const message = response.data.message.toLowerCase()
+        
+        // Parse common Laravel auth error messages
+        if (message.includes('email') || message.includes('user')) {
+          setError('Email address not found. Please check and try again, or sign up.')
+        } else if (message.includes('password')) {
+          setError('Password is incorrect. Please try again.')
+        } else if (message.includes('credentials')) {
+          setError('Email or password is incorrect. Please try again.')
+        } else {
+          setError(response.data.message)
+        }
       } else {
         setError('Unable to connect to the server.')
       }
@@ -244,4 +268,5 @@ export default function Login({
       </form>
     </>
   )
+  
 }

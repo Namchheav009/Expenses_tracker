@@ -456,7 +456,7 @@ export function Transactions({
                             className={`w-2 h-2 rounded-full ${isIncome ? 'bg-emerald-500' : 'bg-rose-500'}`}
                           />
                           <span className="text-sm text-slate-700">
-                            {category?.name}
+                            {txn.categoryId === 'transfer' ? 'Transfer' : category?.name}
                           </span>
                         </div>
                       </td>

@@ -1,6 +1,9 @@
 import { FormEvent, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Wallet as WalletIcon, Eye as EyeIcon, EyeOff as EyeOffIcon, AlertCircle as AlertCircleIcon, UserPlus as UserPlusIcon } from 'lucide-react'
+import ReCAPTCHA from 'react-google-recaptcha'
+
+declare module 'react-google-recaptcha';
 
 import InputError from '@/Components/InputError'
 import api from '@/services/api'
@@ -20,11 +23,18 @@ export default function Register({
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [captcha, setCaptcha] = useState<string | null>(null)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
+
+    if (!captcha) {
+      setError('Please complete the captcha verification.')
+      setIsLoading(false)
+      return
+    }
 
     try {
       const response = await api.post('/register', {
@@ -32,6 +42,7 @@ export default function Register({
         email,
         password,
         password_confirmation: passwordConfirmation,
+        'g-recaptcha-response': captcha,
       })
 
       const token = response.data?.token
@@ -46,7 +57,8 @@ export default function Register({
     } catch (err: any) {
       const response = err?.response
       if (response?.data?.errors) {
-        setError(response.data.errors.name || response.data.errors.email || response.data.errors.password || response.data.errors.password_confirmation || response.data.errors.general || 'Registration failed.')
+        const errors = response.data.errors
+        setError(errors.name || errors.email || errors.password || errors.password_confirmation || errors.captcha || errors.general || 'Registration failed.')
       } else if (response?.data?.message) {
         setError(response.data.message)
       } else {
@@ -149,6 +161,13 @@ export default function Register({
                   )}
                 </button>
               </div>
+            </div>
+
+            <div>
+              <ReCAPTCHA
+                sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                onChange={(value) => setCaptcha(value)}
+              />
             </div>
 
             {error && (
