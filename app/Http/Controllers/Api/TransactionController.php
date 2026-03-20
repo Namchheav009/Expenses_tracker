@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Transaction;
 use App\Models\Wallet;
+use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\DB;
 
 class TransactionController extends Controller
 {
@@ -26,32 +28,66 @@ class TransactionController extends Controller
     {
         $validated = $request->validate([
             'wallet_id' => 'required|exists:wallets,id',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'required|string',
             'amount' => 'required|numeric|min:0.01',
             'transaction_type' => 'required|in:income,expense',
             'description' => 'nullable|string',
             'transaction_date' => 'required|date',
         ]);
 
-        $transaction = Transaction::create([
-            ...$validated,
-            'user_id' => $request->user()->id,
-        ]);
-
-        // Update wallet balance
-        $wallet = Wallet::find($validated['wallet_id']);
-        if ($validated['transaction_type'] === 'income') {
-            $wallet->increment('balance', $validated['amount']);
+        // Convert 'transfer' marker into a real category_id
+        if ($validated['category_id'] === 'transfer') {
+            $transferCategory = Category::firstOrCreate(
+                ['name' => 'Transfer', 'user_id' => $request->user()->id],
+                ['type' => 'expense', 'icon' => null, 'color' => '#9ca3af']
+            );
+            $validated['category_id'] = $transferCategory->id;
         } else {
-            $wallet->decrement('balance', $validated['amount']);
+            $categoryExists = Category::where('id', $validated['category_id'])
+                ->where('user_id', $request->user()->id)
+                ->exists();
+            if (!$categoryExists) {
+                return response()->json(['error' => 'Invalid category_id'], 422);
+            }
         }
 
-        return response()->json($transaction->load(['wallet', 'category']), 201);
+        try {
+            $transaction = Transaction::create([
+                ...$validated,
+                'user_id' => $request->user()->id,
+            ]);
+
+            // Update wallet balance
+            $wallet = Wallet::find($validated['wallet_id']);
+            if (!$wallet) {
+                return response()->json(['error' => 'Wallet not found'], 404);
+            }
+
+            if ($validated['transaction_type'] === 'income') {
+                $wallet->increment('balance', $validated['amount']);
+            } else {
+                $wallet->decrement('balance', $validated['amount']);
+            }
+
+            // Load relationships, handle 'transfer' specially
+            if ($validated['category_id'] !== 'transfer') {
+                return response()->json($transaction->load(['wallet', 'category']), 201);
+            } else {
+                // For transfer transactions, load wallet only (no category relationship)
+                return response()->json($transaction->load(['wallet']), 201);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function show(Transaction $transaction): JsonResponse
     {
         Gate::authorize('view', $transaction);
+        // Handle 'transfer' category specially (no relationship load)
+        if ($transaction->category_id === 'transfer') {
+            return response()->json($transaction->load(['wallet']));
+        }
         return response()->json($transaction->load(['wallet', 'category']));
     }
 
@@ -61,12 +97,28 @@ class TransactionController extends Controller
 
         $validated = $request->validate([
             'wallet_id' => 'required|exists:wallets,id',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'required|string',
             'amount' => 'required|numeric|min:0.01',
             'transaction_type' => 'required|in:income,expense',
             'description' => 'nullable|string',
             'transaction_date' => 'required|date',
         ]);
+
+        // Convert 'transfer' marker into a real category_id (update routes and other calls)
+        if ($validated['category_id'] === 'transfer') {
+            $transferCategory = Category::firstOrCreate(
+                ['name' => 'Transfer', 'user_id' => $request->user()->id],
+                ['type' => 'expense', 'icon' => null, 'color' => '#9ca3af']
+            );
+            $validated['category_id'] = $transferCategory->id;
+        } else {
+            $categoryExists = Category::where('id', $validated['category_id'])
+                ->where('user_id', $request->user()->id)
+                ->exists();
+            if (!$categoryExists) {
+                return response()->json(['error' => 'Invalid category_id'], 422);
+            }
+        }
 
         // Handle wallet balance changes if wallet or amount/type changed
         $oldWallet = $transaction->wallet;
@@ -93,7 +145,12 @@ class TransactionController extends Controller
             $newWallet->decrement('balance', $newAmount);
         }
 
-        return response()->json($transaction->load(['wallet', 'category']));
+        // Load relationships, handle 'transfer' specially
+        if ($validated['category_id'] !== 'transfer') {
+            return response()->json($transaction->load(['wallet', 'category']));
+        } else {
+            return response()->json($transaction->load(['wallet']));
+        }
     }
 
     public function destroy(Transaction $transaction): JsonResponse

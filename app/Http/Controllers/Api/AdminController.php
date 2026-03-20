@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
@@ -153,24 +154,54 @@ class AdminController extends Controller
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
             'wallet_id' => 'required|exists:wallets,id',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'required|string',
             'amount' => 'required|numeric|min:0.01',
             'transaction_type' => 'required|in:income,expense',
             'description' => 'nullable|string',
             'transaction_date' => 'required|date',
         ]);
 
-        $transaction = Transaction::create($validated);
-
-        // Update wallet balance
-        $wallet = \App\Models\Wallet::find($validated['wallet_id']);
-        if ($validated['transaction_type'] === 'income') {
-            $wallet->increment('balance', $validated['amount']);
+        // Convert 'transfer' marker into a real category_id for FK compliance
+        if ($validated['category_id'] === 'transfer') {
+            $transferCategory = Category::firstOrCreate(
+                ['name' => 'Transfer', 'user_id' => $request->user()->id],
+                ['type' => 'expense', 'icon' => null, 'color' => '#9ca3af']
+            );
+            $validated['category_id'] = $transferCategory->id;
         } else {
-            $wallet->decrement('balance', $validated['amount']);
+            $categoryExists = DB::table('categories')
+                ->where('id', $validated['category_id'])
+                ->exists();
+            
+            if (!$categoryExists) {
+                return response()->json(['error' => 'Invalid category_id'], 422);
+            }
         }
 
-        return response()->json(['data' => $transaction->load(['user', 'wallet', 'category'])], 201);
+        try {
+            $transaction = Transaction::create($validated);
+
+            // Update wallet balance
+            $wallet = \App\Models\Wallet::find($validated['wallet_id']);
+            if (!$wallet) {
+                return response()->json(['error' => 'Wallet not found'], 404);
+            }
+
+            if ($validated['transaction_type'] === 'income') {
+                $wallet->increment('balance', $validated['amount']);
+            } else {
+                $wallet->decrement('balance', $validated['amount']);
+            }
+
+            // Handle 'transfer' category specially
+            if ($validated['category_id'] !== 'transfer') {
+                return response()->json(['data' => $transaction->load(['user', 'wallet', 'category'])], 201);
+            } else {
+                return response()->json(['data' => $transaction->load(['user', 'wallet'])], 201);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function updateTransaction(Request $request, $id)
@@ -180,12 +211,29 @@ class AdminController extends Controller
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
             'wallet_id' => 'required|exists:wallets,id',
-            'category_id' => 'required|exists:categories,id',
+            'category_id' => 'required|string',
             'amount' => 'required|numeric|min:0.01',
             'transaction_type' => 'required|in:income,expense',
             'description' => 'nullable|string',
             'transaction_date' => 'required|date',
         ]);
+
+        // Convert 'transfer' marker into a real category_id for FK compliance
+        if ($validated['category_id'] === 'transfer') {
+            $transferCategory = Category::firstOrCreate(
+                ['name' => 'Transfer', 'user_id' => $request->user()->id],
+                ['type' => 'expense', 'icon' => null, 'color' => '#9ca3af']
+            );
+            $validated['category_id'] = $transferCategory->id;
+        } else {
+            $categoryExists = DB::table('categories')
+                ->where('id', $validated['category_id'])
+                ->exists();
+            
+            if (!$categoryExists) {
+                return response()->json(['error' => 'Invalid category_id'], 422);
+            }
+        }
 
         // Handle wallet balance changes if wallet or amount/type changed
         $oldWallet = $transaction->wallet;
@@ -212,7 +260,12 @@ class AdminController extends Controller
             $newWallet->decrement('balance', $newAmount);
         }
 
-        return response()->json(['data' => $transaction->load(['user', 'wallet', 'category'])]);
+        // Handle 'transfer' category specially
+        if ($validated['category_id'] !== 'transfer') {
+            return response()->json(['data' => $transaction->load(['user', 'wallet', 'category'])]);
+        } else {
+            return response()->json(['data' => $transaction->load(['user', 'wallet'])]);
+        }
     }
 
     public function deleteTransaction(Request $request, $id)

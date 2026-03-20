@@ -101,6 +101,25 @@ export default function Home() {
     year: Number(a.year),
     summaryText: a.summary_text ?? a.summaryText ?? '',
     aiResult: a.ai_result ?? a.aiResult ?? '',
+    confidenceScore: Number(a.confidence_score ?? a.confidenceScore ?? 0.8),
+    analysisType: a.analysis_type ?? a.analysisType ?? 'monthly',
+    recommendations: a.recommendations ?? [],
+    transactionSummary: a.transaction_summary ?? a.transactionSummary ?? {
+      totalIncome: 0,
+      totalExpenses: 0,
+      netSavings: 0,
+      averageTransaction: 0,
+      topCategories: [],
+    },
+    budgetInsights: a.budget_insights ?? a.budgetInsights ?? [],
+    spendingMetrics: a.spending_metrics ?? a.spendingMetrics ?? {
+      savingsRate: 0,
+      incomeStability: 0,
+      expenseVariance: 0,
+      budgetAdherence: 0,
+    },
+    trends: a.trends ?? [],
+    alerts: a.alerts ?? [],
     createdAt: a.created_at ?? a.createdAt ?? '',
   })
 
@@ -273,16 +292,24 @@ export default function Home() {
 
   const handleAddTransaction = async (txn: Omit<Transaction, 'id' | 'createdAt'>) => {
     try {
-      // Handle transfer transactions specially - store them locally without API validation
-      if (txn.categoryId === 'transfer') {
-        const newTxn: Transaction = {
-          id: `transfer-${Date.now()}`,
-          ...txn,
-          createdAt: new Date().toISOString(),
-        }
-        setTransactions((prev) => [newTxn, ...prev])
-        
-        // Update wallet balance for transfers
+      // Transform to API expected format (snake_case)
+      const apiTxn = {
+        wallet_id: txn.walletId,
+        category_id: txn.categoryId,
+        amount: txn.amount,
+        transaction_type: txn.transactionType,
+        description: txn.title, // API expects 'description', frontend uses 'title'
+        transaction_date: txn.date, // API expects 'transaction_date', frontend uses 'date'
+      }
+      
+      // All transactions (including transfers) go through the API
+      const response = await transactionsApi.store(apiTxn)
+      const newTxn = normalizeTransaction(response.data)
+      setTransactions((prev) => [newTxn, ...prev])
+      
+      // Only update wallet balance for non-transfer transactions
+      // Transfer transactions already have their wallet balances updated in Wallets.tsx
+      if (txn.categoryId !== 'transfer') {
         setWallets((prev) =>
           prev.map((w) => {
             if (w.id.toString() === txn.walletId.toString()) {
@@ -297,40 +324,11 @@ export default function Home() {
             return w
           }),
         )
-        return
       }
-
-      // Transform to API expected format (snake_case)
-      const apiTxn = {
-        wallet_id: txn.walletId,
-        category_id: txn.categoryId,
-        amount: txn.amount,
-        transaction_type: txn.transactionType,
-        description: txn.title, // API expects 'description', frontend uses 'title'
-        transaction_date: txn.date, // API expects 'transaction_date', frontend uses 'date'
-      }
-      const response = await transactionsApi.store(apiTxn)
-      const newTxn = normalizeTransaction(response.data)
-      setTransactions((prev) => [...prev, newTxn])
-      
-      // Update wallet balance
-      setWallets((prev) =>
-        prev.map((w) => {
-          if (w.id.toString() === txn.walletId.toString()) {
-            return {
-              ...w,
-              balance:
-                txn.transactionType === 'income'
-                  ? w.balance + txn.amount
-                  : w.balance - txn.amount,
-            }
-          }
-          return w
-        }),
-      )
-    } catch (err) {
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.error || err?.message || 'Failed to add transaction'
       console.error('Error adding transaction:', err)
-      setError('Failed to add transaction')
+      setError(errorMsg)
     }
   }
 
@@ -348,6 +346,11 @@ export default function Home() {
       const response = await transactionsApi.update(id, apiTxn)
       const updatedTxn = normalizeTransaction(response.data)
       setTransactions((prev) => prev.map((t) => (t.id === id ? updatedTxn : t)))
+      
+      // Skip wallet balance updates for transfer transactions
+      if (txn.categoryId === 'transfer') {
+        return
+      }
       
       // Update wallet balances (revert old transaction impact, apply new impact)
       const originalTxn = transactions.find((t) => t.id === id)
@@ -392,9 +395,10 @@ export default function Home() {
           }),
         )
       }
-    } catch (err) {
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.error || err?.message || 'Failed to update transaction'
       console.error('Error updating transaction:', err)
-      setError('Failed to update transaction')
+      setError(errorMsg)
     }
   }
 
@@ -654,6 +658,49 @@ export default function Home() {
       summaryText,
       aiResult,
       createdAt: new Date().toISOString(),
+      confidenceScore: 0.85,
+      analysisType: 'monthly',
+      recommendations: [
+        {
+          category: 'General',
+          priority: overBudgetCount > 0 ? 'high' : 'medium',
+          title: overBudgetCount > 0 ? 'Review Over-Budget Categories' : 'Maintain Budget Performance',
+          description: overBudgetCount
+            ? `You are over budget in ${overBudgetCount} category(ies). Review and adjust spending.`
+            : 'All budgets are within limits. Continue current spending habits.',
+        },
+      ],
+      transactionSummary: {
+        totalIncome,
+        totalExpenses: totalExpense,
+        netSavings: totalIncome - totalExpense,
+        averageTransaction: transactions.length > 0 ? (totalIncome + totalExpense) / transactions.length : 0,
+        topCategories: [],
+      },
+      budgetInsights: [],
+      spendingMetrics: {
+        savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
+        incomeStability: 0.8,
+        expenseVariance: 0.5,
+        budgetAdherence: budgets.length > 0 ? Math.max(0, 1 - (overBudgetCount / budgets.length) * 0.5) : 1,
+      },
+      trends: [
+        {
+          name: 'Total Spending',
+          direction: 'stable',
+          percentageChange: 0,
+          timeframe: 'this month',
+        },
+      ],
+      alerts: overBudgetCount
+        ? [
+            {
+              severity: 'warning' as const,
+              message: `You are over budget in ${overBudgetCount} category(ies).`,
+              actionRequired: true,
+            },
+          ]
+        : [],
     }
 
     try {
