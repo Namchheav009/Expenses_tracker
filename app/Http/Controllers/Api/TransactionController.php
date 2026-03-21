@@ -52,17 +52,28 @@ class TransactionController extends Controller
         }
 
         try {
+            // Get wallet first to check balance
+            $wallet = Wallet::find($validated['wallet_id']);
+            if (!$wallet) {
+                return response()->json(['error' => 'Wallet not found'], 404);
+            }
+
+            // Check if wallet has sufficient balance for expense transactions
+            if ($validated['transaction_type'] === 'expense' && $wallet->balance < $validated['amount']) {
+                return response()->json([
+                    'error' => 'Insufficient balance',
+                    'message' => 'The wallet does not have enough money to complete this transfer.',
+                    'balance' => $wallet->balance,
+                    'required' => $validated['amount']
+                ], 422);
+            }
+
             $transaction = Transaction::create([
                 ...$validated,
                 'user_id' => $request->user()->id,
             ]);
 
             // Update wallet balance
-            $wallet = Wallet::find($validated['wallet_id']);
-            if (!$wallet) {
-                return response()->json(['error' => 'Wallet not found'], 404);
-            }
-
             if ($validated['transaction_type'] === 'income') {
                 $wallet->increment('balance', $validated['amount']);
             } else {
@@ -125,11 +136,55 @@ class TransactionController extends Controller
         $oldAmount = $transaction->amount;
         $oldType = $transaction->transaction_type;
 
+        // Get the new wallet to check balance before making changes
+        $newWallet = Wallet::find($validated['wallet_id']);
+        if (!$newWallet) {
+            return response()->json(['error' => 'Target wallet not found'], 404);
+        }
+
+        // Check if the update would result in negative balance
+        $newAmount = $validated['amount'];
+        $newType = $validated['transaction_type'];
+
+        // Calculate what the new wallet balance would be after the update
+        $newWalletBalance = $newWallet->balance;
+
+        // If it's a different wallet, first revert the old transaction
+        if ($oldWallet->id !== $newWallet->id) {
+            if ($oldType === 'income') {
+                $newWalletBalance += $oldAmount; // Add back the old amount if it was income
+            } else {
+                $newWalletBalance += $oldAmount; // Add back the old amount if it was expense
+            }
+        } else {
+            // Same wallet, calculate the difference
+            if ($oldType === 'income') {
+                $newWalletBalance -= $oldAmount; // Remove old income
+            } else {
+                $newWalletBalance += $oldAmount; // Reverse old expense
+            }
+        }
+
+        // Apply the new transaction
+        if ($newType === 'income') {
+            $newWalletBalance += $newAmount;
+        } else {
+            $newWalletBalance -= $newAmount;
+        }
+
+        // Check if balance would go negative
+        if ($newWalletBalance < 0) {
+            return response()->json([
+                'error' => 'Insufficient balance',
+                'message' => 'This update would result in a negative balance in the wallet.',
+                'current_balance' => $newWallet->balance,
+                'resulting_balance' => $newWalletBalance
+            ], 422);
+        }
+
         $transaction->update($validated);
 
         $newWallet = $transaction->fresh()->wallet; // Reload with new wallet if changed
-        $newAmount = $transaction->amount;
-        $newType = $transaction->transaction_type;
 
         // Revert old balance
         if ($oldType === 'income') {
