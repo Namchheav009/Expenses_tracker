@@ -1,0 +1,15 @@
+services:
+- type: web
+name: my-laravel-app
+env: docker
+dockerfilePath: ./Dockerfile
+envVars:
+- key: APP_ENV
+value: production
+- key: APP_KEY
+generateValue: true
+databases:
+- name: my-laravel-db
+databaseName: my_database
+user: db_user
+plan: free
