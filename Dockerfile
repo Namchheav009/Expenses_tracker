@@ -1,7 +1,13 @@
 FROM php:8.2-fpm
+
 RUN apt-get update && apt-get install -y \
-git curl libpng-dev libonig-dev \
-libxml2-dev libpq-dev zip unzip nginx
+    nginx \
+    git \
+    curl \
+    libpq-dev \
+    libzip-dev \
+    unzip \
+    && docker-php-ext-install pdo pdo_pgsql pgsql zip
 RUN docker-php-ext-install pdo pdo_pgsql pgsql mbstring exif pcntl bcmath gd
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www
@@ -18,3 +24,4 @@ EXPOSE 10000
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 CMD ["/start.sh"]
+
