@@ -185,12 +185,32 @@ export function Sidebar({
       {/* User Area */}
       <div className="p-4 border-t border-slate-800">
         <div className="flex items-center justify-center lg:justify-start gap-3">
+          <button
+            onClick={() => setCurrentPage('dashboard')}
+            className="lg:hidden p-2 rounded-lg hover:bg-slate-800 transition-colors"
+            title={currentUser.name}
+          >
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center border ${
+                isAdmin
+                  ? 'bg-amber-500/20 border-amber-500/30'
+                  : 'bg-slate-700 border-slate-600'
+              }`}
+            >
+              <span
+                className={`text-xs font-medium ${
+                  isAdmin ? 'text-amber-400' : 'text-white'
+                }`}
+              >
+                {initials}
+              </span>
+            </div>
+          </button>
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border ${
-              isAdmin
-                ? 'bg-amber-500/20 border-amber-500/30'
-                : 'bg-slate-700 border-slate-600'
-            }`}
+            className={`${isAdmin
+              ? 'bg-amber-500/20 border-amber-500/30'
+              : 'bg-slate-700 border-slate-600'
+            } hidden lg:flex w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border`}
           >
             <span
               className={`text-sm font-medium ${
@@ -215,7 +235,7 @@ export function Sidebar({
           </div>
           <button
             onClick={onLogout}
-            className="hidden lg:flex p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            className="flex p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
             title="Sign Out"
           >
             <LogOutIcon className="w-4 h-4" />
