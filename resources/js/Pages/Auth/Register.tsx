@@ -24,13 +24,14 @@ export default function Register({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [captcha, setCaptcha] = useState<string | null>(null)
+  const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
 
-    if (!captcha) {
+    if (recaptchaSiteKey && !captcha) {
       setError('Please complete the captcha verification.')
       setIsLoading(false)
       return
@@ -163,12 +164,18 @@ export default function Register({
               </div>
             </div>
 
-            <div>
-              <ReCAPTCHA
-                sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
-                onChange={(value) => setCaptcha(value)}
-              />
-            </div>
+            {recaptchaSiteKey ? (
+              <div>
+                <ReCAPTCHA
+                  sitekey={recaptchaSiteKey}
+                  onChange={(value) => setCaptcha(value)}
+                />
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">
+                ReCAPTCHA is disabled in this environment. Registration works without captcha.
+              </div>
+            )}
 
             {error && (
               <motion.div

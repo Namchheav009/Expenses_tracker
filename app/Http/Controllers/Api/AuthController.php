@@ -53,27 +53,28 @@ class AuthController extends Controller
             'email' => [
                 'required',
                 'email:rfc,dns',
-                'regex:/^[a-zA-Z0-9._%+-]+@(gmail\.com|outlook\.com|hotmail\.com|live\.com)$/i',
                 'unique:users,email',
             ],
             'password' => ['required', 'confirmed', Password::min(8)],
-            'g-recaptcha-response' => 'required',
+            'g-recaptcha-response' => env('RECAPTCHA_SECRET_KEY') ? 'required' : 'nullable',
         ], [
-            'email.regex' => 'Please use a Gmail or Microsoft email address.',
             'email.unique' => 'This email is already registered.',
+            'g-recaptcha-response.required' => 'Please complete the captcha verification.',
         ]);
 
-        // Verify captcha
-        $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret' => env('RECAPTCHA_SECRET_KEY'),
-            'response' => $validated['g-recaptcha-response'],
-            'remoteip' => $request->ip(),
-        ]);
-
-        if (!$response->json('success')) {
-            throw ValidationException::withMessages([
-                'captcha' => ['Captcha verification failed. Please try again.'],
+        // Verify captcha only when key is set
+        if (env('RECAPTCHA_SECRET_KEY')) {
+            $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                'secret' => env('RECAPTCHA_SECRET_KEY'),
+                'response' => $validated['g-recaptcha-response'],
+                'remoteip' => $request->ip(),
             ]);
+
+            if (!$response->json('success')) {
+                throw ValidationException::withMessages([
+                    'captcha' => ['Captcha verification failed. Please try again.'],
+                ]);
+            }
         }
 
         $user = User::create([
