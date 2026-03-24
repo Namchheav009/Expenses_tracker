@@ -210,7 +210,7 @@ export function Sidebar({
             className={`${isAdmin
               ? 'bg-amber-500/20 border-amber-500/30'
               : 'bg-slate-700 border-slate-600'
-            } hidden lg:flex w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border`}
+            } hidden lg:flex w-10 h-10 rounded-full items-center justify-center flex-shrink-0 border`}
           >
             <span
               className={`text-sm font-medium ${
