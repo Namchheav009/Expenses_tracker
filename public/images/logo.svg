@@ -1,0 +1,13 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <circle cx="128" cy="128" r="110" fill="#22C55E"></circle>
+
+  <!-- Chart line -->
+  <path d="M70 150L105 120L130 140L180 95" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></path>
+
+  <!-- Check mark -->
+  <path d="M95 155L120 180L165 130" stroke="white" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></path>
+
+  <!-- Subtle inner ring -->
+  <circle cx="128" cy="128" r="100" stroke="white" stroke-opacity="0.15" stroke-width="4"></circle>
+</svg>
