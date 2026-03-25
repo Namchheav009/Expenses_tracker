@@ -102,6 +102,8 @@ export default function Login({
         // Check for specific validation errors
         if (errors.email) {
           setError('Email address not found. Please check and try again, or sign up.')
+        } else if (errors.credentials) {
+          setError('Invalid email or password. Please try again.')
         } else if (errors.password) {
           setError('Password is incorrect. Please try again.')
         } else if (errors.general) {

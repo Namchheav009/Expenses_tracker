@@ -5,7 +5,9 @@ import {
   FilterIcon,
   Edit2Icon,
   Trash2Icon,
+  DownloadIcon,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import type { Transaction, Category, Wallet, User } from '../data/mockData'
 import { Modal } from '../Components/Modal'
 import { confirmDelete, showDeletedToast, showSavedToast } from '../Components/confirmDelete'
@@ -228,6 +230,60 @@ export function Transactions({
     }
   }
 
+  const handleExportToXlsx = () => {
+    try {
+      // Prepare data for export
+      const exportData = filteredTransactions.map((txn) => {
+        const category = currentCategories.find((c) => c.id === txn.categoryId)
+        const wallet = currentWallets.find((w) => w.id === txn.walletId)
+        const user = currentUsers.find((u) => u.id === txn.userId)
+
+        return {
+          'Date': new Date(txn.date).toLocaleDateString(),
+          'User': user?.name || user?.username || txn.userId || 'Current User',
+          'Title': txn.title,
+          'Category': txn.categoryId === 'transfer' ? 'Transfer' : (category?.name || 'Unknown'),
+          'Wallet': wallet?.name || 'Unknown',
+          'Type': txn.transactionType === 'income' ? 'Income' : 'Expense',
+          'Amount': txn.amount,
+          'Note': txn.note || '',
+          'Created At': new Date(txn.createdAt).toLocaleString(),
+        }
+      })
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(exportData)
+
+      // Auto-size columns
+      const colWidths = [
+        { wch: 12 }, // Date
+        { wch: 20 }, // User
+        { wch: 30 }, // Title
+        { wch: 15 }, // Category
+        { wch: 15 }, // Wallet
+        { wch: 10 }, // Type
+        { wch: 12 }, // Amount
+        { wch: 30 }, // Note
+        { wch: 20 }, // Created At
+      ]
+      ws['!cols'] = colWidths
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Transactions')
+
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0]
+      const filename = `transactions_${currentDate}.xlsx`
+
+      // Save file
+      XLSX.writeFile(wb, filename)
+    } catch (err: any) {
+      setError('Failed to export transactions')
+      console.error('Error exporting to XLSX:', err)
+    }
+  }
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formTitle || !formAmount || !formCategory || !formWallet) return
@@ -326,16 +382,26 @@ export function Transactions({
               : 'Manage your daily income and expenses.'}
           </p>
         </div>
-        <button
-          onClick={() => {
-            resetForm()
-            setIsModalOpen(true)
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors shadow-sm"
-        >
-          <PlusIcon className="w-5 h-5" />
-          Add Transaction
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleExportToXlsx}
+            disabled={filteredTransactions.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors shadow-sm"
+          >
+            <DownloadIcon className="w-5 h-5" />
+            Export XLSX
+          </button>
+          <button
+            onClick={() => {
+              resetForm()
+              setIsModalOpen(true)
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors shadow-sm"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Add Transaction
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
