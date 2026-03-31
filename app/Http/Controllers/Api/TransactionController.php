@@ -32,6 +32,7 @@ class TransactionController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'transaction_type' => 'required|in:income,expense',
             'description' => 'nullable|string',
+            'note' => 'nullable|string',
             'transaction_date' => 'required|date',
         ]);
 
@@ -112,6 +113,7 @@ class TransactionController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'transaction_type' => 'required|in:income,expense',
             'description' => 'nullable|string',
+            'note' => 'nullable|string',
             'transaction_date' => 'required|date',
         ]);
 

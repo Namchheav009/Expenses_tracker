@@ -322,7 +322,7 @@ export function Transactions({
             transactionType: response.data.data.transaction_type,
             date: response.data.data.transaction_date,
             title: response.data.data.description || '',
-            note: '',
+            note: response.data.data.note || '',
             createdAt: response.data.data.created_at,
           }
           setAdminTransactions(prev => prev.map(t => t.id === editingTxn.id ? updatedTxn : t))
@@ -338,7 +338,7 @@ export function Transactions({
             transactionType: response.data.data.transaction_type,
             date: response.data.data.transaction_date,
             title: response.data.data.description || '',
-            note: '',
+            note: response.data.data.note || '',
             createdAt: response.data.data.created_at,
           }
           setAdminTransactions(prev => [newTxn, ...prev])

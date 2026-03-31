@@ -299,6 +299,7 @@ export default function Home() {
         amount: txn.amount,
         transaction_type: txn.transactionType,
         description: txn.title, // API expects 'description', frontend uses 'title'
+        note: txn.note,
         transaction_date: txn.date, // API expects 'transaction_date', frontend uses 'date'
       }
       
@@ -341,6 +342,7 @@ export default function Home() {
         amount: txn.amount,
         transaction_type: txn.transactionType,
         description: txn.title,
+        note: txn.note,
         transaction_date: txn.date,
       }
       const response = await transactionsApi.update(id, apiTxn)
