@@ -1,26 +1,40 @@
 services:
-- type: web
-  name: my-laravel-app
-  env: docker
-  dockerfilePath: ./Dockerfile
-  envVars:
-  - key: APP_ENV
-    value: production
-  - key: APP_KEY
-    generateValue: true
-  - key: DB_CONNECTION
-    value: pgsql
-  - key: DB_HOST
-    value: aws-1-ap-northeast-2.pooler.supabase.com
-  - key: DB_PORT
-    value: '5432'
-  - key: DB_DATABASE
-    value: postgres
-  - key: DB_USERNAME
-    value: postgres.cwxtbmyqyfwsjtfjxufy
-  - key: DB_PASSWORD
-    value: xpense009$$
-  - key: DB_SSLMODE
-    value: require
-  - key: DATABASE_URL
-    value: postgresql://postgres.cwxtbmyqyfwsjtfjxufy:xpense009$$@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require
+  - type: web
+    name: expenses-tracker
+    runtime: docker
+    envVars:
+      - key: APP_ENV
+        value: production
+
+      - key: APP_KEY
+        generateValue: true
+
+      - key: APP_DEBUG
+        value: false
+
+      - key: APP_URL
+        value: https://expenses-tracker-1-2d9m.onrender.com
+
+      # =========================
+      # DATABASE (Supabase Pooler)
+      # =========================
+      - key: DB_CONNECTION
+        value: pgsql
+
+      - key: DB_HOST
+        value: aws-1-ap-northeast-2.pooler.supabase.com
+
+      - key: DB_PORT
+        value: "5432"
+
+      - key: DB_DATABASE
+        value: postgres
+
+      - key: DB_USERNAME
+        value: postgres.cwxtbmyqyfwsjtfjxufy
+
+      - key: DB_PASSWORD
+        value: xpense009$$
+
+      - key: DB_SSLMODE
+        value: require
