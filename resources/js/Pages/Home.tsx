@@ -279,7 +279,7 @@ export default function Home() {
     showSavedToast('You have been logged out')
     setTimeout(() => {
       window.location.reload()
-    }, 800)
+    }, 700)
   }
 
   const handleEditUser = (user: User) => {
