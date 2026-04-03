@@ -37,6 +37,8 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
 COPY . .
+# Remove .env file in production - rely on environment variables
+RUN rm -f .env
 
 RUN composer install --no-dev --optimize-autoloader
 

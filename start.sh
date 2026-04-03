@@ -9,6 +9,8 @@ echo "DB_HOST=${DB_HOST:-unset}"
 echo "DB_PORT=${DB_PORT:-unset}"
 echo "DB_DATABASE=${DB_DATABASE:-unset}"
 echo "DB_USERNAME=${DB_USERNAME:-unset}"
+echo "DB_PASSWORD length: ${#DB_PASSWORD}"
+echo "DATABASE_URL=${DATABASE_URL:-unset}"
 
 # Fix permissions for Laravel runtime
 echo "Fixing permissions..."
