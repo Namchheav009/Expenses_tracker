@@ -2,6 +2,15 @@
 
 set -e
 
+echo "Starting app..."
+
+echo "DB_CONNECTION=${DB_CONNECTION:-unset}"
+echo "DB_HOST=${DB_HOST:-unset}"
+echo "DB_PORT=${DB_PORT:-unset}"
+echo "DB_DATABASE=${DB_DATABASE:-unset}"
+echo "DB_USERNAME=${DB_USERNAME:-unset}"
+
+# Fix permissions for Laravel runtime
 echo "Fixing permissions..."
 chmod -R 775 /var/www/storage /var/www/bootstrap/cache || true
 
@@ -25,6 +34,7 @@ php artisan cache:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
 
+# Rebuild config cache using runtime environment vars
 echo "Caching config..."
 php artisan config:cache
 
