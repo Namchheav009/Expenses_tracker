@@ -33,23 +33,27 @@ class RegisteredUserController extends Controller
     {
         $validated = $request->validated();
 
-        // Verify captcha
-        $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret' => env('RECAPTCHA_SECRET_KEY'),
-            'response' => $validated['g-recaptcha-response'],
-            'remoteip' => $request->ip(),
-        ]);
-
-        if (!$response->json('success')) {
-            throw ValidationException::withMessages([
-                'captcha' => ['Captcha verification failed. Please try again.'],
+        // Verify captcha only if recaptcha is configured
+        if (env('RECAPTCHA_SECRET_KEY')) {
+            $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                'secret' => env('RECAPTCHA_SECRET_KEY'),
+                'response' => $validated['g-recaptcha-response'] ?? null,
+                'remoteip' => $request->ip(),
             ]);
+
+            if (!$response->ok() || !$response->json('success')) {
+                throw ValidationException::withMessages([
+                    'captcha' => ['Captcha verification failed. Please try again.'],
+                ]);
+            }
         }
 
         $user = User::create([
             'name' => $validated['name'],
             'email' => strtolower($validated['email']),
             'password' => Hash::make($validated['password']),
+            'role' => 'user',
+            'is_active' => true,
         ]);
 
         event(new Registered($user));

@@ -62,15 +62,15 @@ class AuthController extends Controller
             'g-recaptcha-response.required' => 'Please complete the captcha verification.',
         ]);
 
-        // Verify captcha only when key is set
+        // Verify captcha only when RECAPTCHA_SECRET_KEY is set
         if (env('RECAPTCHA_SECRET_KEY')) {
             $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
                 'secret' => env('RECAPTCHA_SECRET_KEY'),
-                'response' => $validated['g-recaptcha-response'],
+                'response' => $validated['g-recaptcha-response'] ?? null,
                 'remoteip' => $request->ip(),
             ]);
 
-            if (!$response->json('success')) {
+            if (!$response->ok() || !$response->json('success')) {
                 throw ValidationException::withMessages([
                     'captcha' => ['Captcha verification failed. Please try again.'],
                 ]);
@@ -82,6 +82,7 @@ class AuthController extends Controller
             'email' => strtolower($validated['email']),
             'password' => bcrypt($validated['password']),
             'role' => 'user',
+            'is_active' => true,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;

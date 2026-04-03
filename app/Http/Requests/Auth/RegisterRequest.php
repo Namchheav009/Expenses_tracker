@@ -17,7 +17,7 @@ class RegisterRequest extends FormRequest
                 'unique:users,email',
             ],
             'password' => 'required|string|min:8|confirmed',
-            'g-recaptcha-response' => 'required',
+            'g-recaptcha-response' => env('RECAPTCHA_SECRET_KEY') ? 'required' : 'nullable',
         ];
     }
 
