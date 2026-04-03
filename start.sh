@@ -12,6 +12,11 @@ echo "DB_USERNAME=${DB_USERNAME:-unset}"
 echo "DB_PASSWORD length: ${#DB_PASSWORD}"
 echo "DATABASE_URL=${DATABASE_URL:-unset}"
 
+echo "APP_ENV=${APP_ENV:-unset}"
+echo "APP_KEY length: ${#APP_KEY}"
+echo "APP_DEBUG=${APP_DEBUG:-unset}"
+echo "APP_URL=${APP_URL:-unset}"
+
 # Fix permissions for Laravel runtime
 echo "Fixing permissions..."
 chmod -R 775 /var/www/storage /var/www/bootstrap/cache || true
